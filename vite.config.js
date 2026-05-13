@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { loadLoadRunnerResult, createConsoleSummary } from "./loadrunner-raw-loader.js";
 
 function sendJson(res, status, body) {
@@ -12,6 +13,7 @@ function sendJson(res, status, body) {
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     {
       name: "loadrunner-api",
       configureServer(server) {

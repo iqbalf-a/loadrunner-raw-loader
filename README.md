@@ -91,5 +91,5 @@ D:\transfer-kantor\RawResults_12
 
 Filter waktu memakai format `HH:MM:SS`, misalnya `00:00:00` sampai `00:05:00`.
 
-Dashboard memakai Chart.js dari file lokal `vendor/chart.umd.min.js`, bukan CDN, sehingga bisa berjalan offline di Windows Server.
+Dashboard memakai Tailwind CSS dan Chart.js dari dependency/file lokal, bukan CDN. Jalankan `npm run build` sebelum deploy agar CSS Tailwind dikompilasi ke `dist\assets\*.css`; setelah itu dashboard bisa berjalan offline di Windows Server lewat `node .\server.js`.
 

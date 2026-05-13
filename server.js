@@ -31,6 +31,23 @@ function sendText(res, status, text, contentType = "text/plain; charset=utf-8") 
   res.end(text);
 }
 
+function contentTypeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".js") return "application/javascript; charset=utf-8";
+  if (ext === ".html") return "text/html; charset=utf-8";
+  return "application/octet-stream";
+}
+
+async function sendFile(res, filePath) {
+  const content = await readFile(filePath, extIsText(filePath) ? "utf8" : undefined);
+  sendText(res, 200, content, contentTypeFor(filePath));
+}
+
+function extIsText(filePath) {
+  return [".css", ".js", ".html", ".json", ".txt"].includes(path.extname(filePath).toLowerCase());
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -55,6 +72,23 @@ const server = createServer(async (req, res) => {
       const js = await readFile(chartPath, "utf8");
       sendText(res, 200, js, "application/javascript; charset=utf-8");
       return;
+    }
+
+    if (url.pathname.startsWith("/assets/")) {
+      const assetName = path.basename(url.pathname);
+      const assetPath = path.join(__dirname, "dist", "assets", assetName);
+      if (existsSync(assetPath)) {
+        await sendFile(res, assetPath);
+        return;
+      }
+    }
+
+    if (url.pathname === "/src/styles.css") {
+      const stylesPath = path.join(__dirname, "src", "styles.css");
+      if (existsSync(stylesPath)) {
+        await sendFile(res, stylesPath);
+        return;
+      }
     }
 
     if (url.pathname === "/api/load") {
