@@ -4,8 +4,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "summary": "node ./loadrunner-raw-loader.js",
-    "start": "node ./server.js"
+    "summary": "node ./loadrunner-raw-loader.js"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

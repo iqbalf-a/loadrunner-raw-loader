@@ -71,7 +71,9 @@ async function findFirstFile(resultDir, pattern) {
 }
 
 function epochToIso(epochSeconds) {
-  return new Date(Number(epochSeconds) * 1000).toISOString();
+  const epoch = Number(epochSeconds);
+  if (!Number.isFinite(epoch)) return null;
+  return new Date(epoch * 1000).toISOString();
 }
 
 function percentile(values, percentileRank) {
@@ -79,6 +81,40 @@ function percentile(values, percentileRank) {
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.ceil((percentileRank / 100) * sorted.length) - 1;
   return sorted[Math.max(0, Math.min(index, sorted.length - 1))];
+}
+
+function weightedPercentile(items, percentileRank) {
+  const sorted = items
+    .filter((item) => Number.isFinite(item.value) && Number.isFinite(item.weight) && item.weight > 0)
+    .sort((a, b) => a.value - b.value);
+
+  if (!sorted.length) return null;
+
+  const totalWeight = sorted.reduce((total, item) => total + item.weight, 0);
+  const target = Math.ceil((percentileRank / 100) * totalWeight);
+  let cumulative = 0;
+
+  for (const item of sorted) {
+    cumulative += item.weight;
+    if (cumulative >= target) return item.value;
+  }
+
+  return sorted[sorted.length - 1].value;
+}
+
+function parseScriptGroups(scenarioIni) {
+  const scripts = scenarioIni.Scripts ?? {};
+  return Object.keys(scripts).map((scriptKey) => {
+    const scriptName = scriptKey.replace(/_\d+$/, "");
+    return { scriptKey, scriptName, groupName: scriptName.toLowerCase() };
+  });
+}
+
+function resolveTransactionGroup(txName, scriptGroups) {
+  if (!scriptGroups.length) return null;
+  // Remove underscore-bounded pure-digit segments (e.g. _01_ or _01 at end)
+  const stripped = String(txName ?? "").replace(/_\d+(?=_|$)/g, "");
+  return scriptGroups.find((g) => g.scriptName === stripped)?.groupName ?? null;
 }
 
 function parseMeasurementValue(value) {
@@ -206,26 +242,32 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime) {
       graphIndex: row.graphIndex,
       graphType: row.graphType,
       samples: 0,
+      valueCount: 0,
       min: Number.POSITIVE_INFINITY,
       max: Number.NEGATIVE_INFINITY,
       sum: 0,
+      weightedSum: 0,
       values: [],
+      weightedValues: [],
     };
 
     current.samples += 1;
-    current.min = Math.min(current.min, value);
-    current.max = Math.max(current.max, value);
+    current.valueCount += count;
+    current.min = Math.min(current.min, Number.isFinite(min) ? min : value);
+    current.max = Math.max(current.max, Number.isFinite(max) ? max : value);
     current.sum += value;
+    current.weightedSum += value * count;
     current.values.push(value);
+    current.weightedValues.push({ value, weight: count });
     statsByMeasurement.set(measurementId, current);
   }
 
   const stats = [...statsByMeasurement.values()].map((item) => {
-    const { values, ...summary } = item;
+    const { values, weightedValues, ...summary } = item;
     return {
       ...summary,
-      avg: item.samples ? item.sum / item.samples : null,
-      percentile90: percentile(values, 90),
+      avg: item.valueCount ? item.weightedSum / item.valueCount : item.samples ? item.sum / item.samples : null,
+      percentile90: item.valueCount ? weightedPercentile(weightedValues, 90) : percentile(values, 90),
     };
   });
 
@@ -368,8 +410,11 @@ async function loadLoadRunnerResult(resultDir, options = {}) {
     includeRows,
   );
 
+  const scriptGroups = parseScriptGroups(scenarioIni);
+
   return {
     resultDir: resolvedResultDir,
+    scriptGroups,
     scenario: {
       product: scenarioIni.Scenario?.Product ?? null,
       version: scenarioIni.Scenario?.Version ?? null,
@@ -405,7 +450,7 @@ function buildTransactionOutcomes(graphs) {
 
   for (const item of successGraph?.stats ?? []) {
     outcomes.set(normalizeTransactionName(item.measurementName), {
-      success: Math.round(item.sum),
+      success: item.samples,
       fail: 0,
     });
   }
@@ -413,7 +458,7 @@ function buildTransactionOutcomes(graphs) {
   for (const item of failGraph?.stats ?? []) {
     const key = normalizeTransactionName(item.measurementName);
     const current = outcomes.get(key) ?? { success: 0, fail: 0 };
-    current.fail = Math.round(item.sum);
+    current.fail = item.samples;
     outcomes.set(key, current);
   }
 
@@ -441,6 +486,7 @@ function createConsoleSummary(result) {
 
   return {
     scenario: result.scenario,
+    scriptGroups: result.scriptGroups,
     graphCount: result.graphs.length,
     graphTypes: result.graphs.map((graph) => ({
       index: graph.index,
