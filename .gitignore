@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 loadrunner-summary.json
+/.loadrunner-cache/
+
+# Hermes/Claude local session state
+.hermes/

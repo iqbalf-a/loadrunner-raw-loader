@@ -3,39 +3,85 @@
 /* Dark mode variant: triggered by data-theme="dark" on body */
 @variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* ── CSS variables ── */
+/* ── Self-hosted fonts (no CDN — must work offline) ── */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Design tokens: "instrument panel" — flat, hairline, single accent ──
+   These flip automatically via [data-theme="dark"], so Tailwind utilities
+   referencing them (e.g. bg-(--surface)) never need a dark: variant. */
 :root {
+  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
+
+  --ink: #0b0e11;
+  --paper: #f4f3ee;
+  --surface: var(--paper);
+  --surface-raised: #fbfaf6;
+  --line: #d6d3c8;
+  --signal: #ff8a00;
+  --ok: #3ddc84;
+  --danger: #ff4136;
+  --text: #1c1e1f;
+  --text-muted: #6b6a63;
+
   /* Read by JS via currentCssVar() */
-  --grid-line: rgba(114, 126, 160, 0.14);
-  --chart-text: #65708f;
+  --grid-line: var(--line);
+  --chart-text: var(--text-muted);
 
-  /* Complex radial gradient – not expressible as Tailwind utility */
-  --page-bg:
-    radial-gradient(circle at 9% 10%, rgba(47, 125, 246, 0.16), transparent 28%),
-    radial-gradient(circle at 88% 12%, rgba(0, 191, 143, 0.17), transparent 26%),
-    radial-gradient(circle at 78% 88%, rgba(255, 65, 109, 0.13), transparent 28%),
-    linear-gradient(135deg, #f7fbff 0%, #f8f9ff 45%, #fff5ff 100%);
+  /* Set by JS (measured from the actual sticky toolbar height) so scroll targets
+     never land underneath it — see initScrollspy() in main.js. */
+  --toolbar-height: 140px;
+}
 
-  /* Used via box-shadow utilities referencing var() */
-  --shadow: 0 10px 28px rgba(38, 50, 86, 0.07);
-  --soft-shadow: 0 6px 18px rgba(60, 72, 110, 0.06);
+[id^="section-"] {
+  scroll-margin-top: var(--toolbar-height);
 }
 
 [data-theme="dark"] {
-  --grid-line: rgba(214, 226, 255, 0.12);
-  --chart-text: #9ca8c0;
-  --page-bg:
-    radial-gradient(circle at 12% 8%, rgba(47, 125, 246, 0.18), transparent 30%),
-    radial-gradient(circle at 88% 12%, rgba(0, 191, 143, 0.14), transparent 28%),
-    radial-gradient(circle at 76% 86%, rgba(255, 65, 109, 0.12), transparent 28%),
-    linear-gradient(135deg, #070a12 0%, #0b1020 52%, #111827 100%);
-  --shadow: 0 16px 42px rgba(0, 0, 0, 0.22);
-  --soft-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --surface: var(--ink);
+  --surface-raised: #10141a;
+  --line: #2a2e33;
+  --text: #edeff2;
+  --text-muted: #9aa0a8;
+  --grid-line: var(--line);
+  --chart-text: var(--text-muted);
 }
 
-/* ── Body background (complex gradient variable) ── */
+/* ── Base surface: graph-paper crosshatch (signature element) ── */
 body {
-  background: var(--page-bg);
+  background-color: var(--surface);
+  background-image:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--line) 55%, transparent) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--line) 55%, transparent) 0 1px, transparent 1px 24px);
+  background-attachment: fixed;
+  font-family: var(--font-display);
 }
 
 /* ── Grid layout ── */
@@ -43,19 +89,34 @@ body {
 .chart-panel { grid-column: auto; }
 .chart-panel.wide { grid-column: 1 / -1; }
 
-/* ── panel-title gradient bar (::before pseudo-element) ── */
+/* ── panel-title accent bar (::before pseudo-element, not utility-expressible) ── */
 .panel-title::before {
   content: "";
   display: inline-block;
-  width: 4px;
-  height: 16px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #00bf8f, #2f7df6);
+  width: 3px;
+  height: 14px;
+  background: var(--signal);
   flex-shrink: 0;
+}
+
+/* ── Sidebar nav active state (JS-toggled class) ── */
+.sidebar-nav a.active {
+  color: var(--signal);
+  border-left-color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 8%, transparent);
+}
+
+/* ── Range chip "changed" state (JS-toggled class) ── */
+.range-chip.changed {
+  border-left-color: var(--signal);
 }
 
 /* ── Chart panel expand (toggled by JS classList) ── */
 body.chart-expanded-open {
+  overflow: hidden;
+}
+
+body.transaction-modal-open {
   overflow: hidden;
 }
 
@@ -67,23 +128,15 @@ body.chart-expanded-open {
   flex-direction: column;
   grid-column: auto;
   overflow: auto;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
-}
-
-[data-theme="dark"] .chart-panel.expanded {
-  background: rgba(14, 20, 33, 0.88);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .chart-panel.expanded .panel-title {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: rgba(255, 255, 255, 0.88);
-}
-
-[data-theme="dark"] .chart-panel.expanded .panel-title {
-  background: rgba(14, 20, 33, 0.88);
+  background: var(--surface-raised);
 }
 
 .chart-panel.expanded .chart-wrap {
@@ -91,41 +144,133 @@ body.chart-expanded-open {
   min-height: 420px;
 }
 
-/* ── Tooltip (display:none, toggled by JS via style) ── */
-.chart-tooltip {
-  position: fixed;
-  z-index: 20;
-  display: none;
-  max-width: 280px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(5, 7, 13, 0.94);
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.35;
-  pointer-events: none;
-  box-shadow: 0 8px 22px rgba(20, 30, 45, 0.22);
+.chart-series-selector {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  background: var(--surface);
+  font-family: var(--font-mono);
 }
 
-.chart-tooltip strong {
-  display: block;
-  margin-bottom: 3px;
+.chart-series-selector-heading {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chart-series-selector-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 6px 16px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.chart-series-selector-list label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.chart-series-selector-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transaction-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--ink) 60%, transparent);
+}
+
+.transaction-modal[hidden] {
+  display: none;
+}
+
+.transaction-modal-content {
+  display: flex;
+  flex-direction: column;
+  width: min(1400px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+}
+
+.transaction-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-modal-header h2 {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transaction-modal-table-wrap {
+  overflow: auto;
+}
+
+.transaction-modal th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+@media (max-width: 640px) {
+  .transaction-modal {
+    padding: 10px;
+  }
+
+  .transaction-modal-content {
+    max-height: calc(100vh - 20px);
+  }
 }
 
 /* ── Status classes used in innerHTML JS ── */
-.ok   { color: #00bf8f; font-weight: 800; }
-.fail { color: #ff416d; font-weight: 800; }
-.muted { color: #7a8191; }
+.ok   { color: var(--ok); font-weight: 500; }
+.fail { color: var(--danger); font-weight: 500; }
+.muted { color: var(--text-muted); }
 
-[data-theme="dark"] .muted { color: #96a3ba; }
+#status.status-error {
+  color: var(--danger);
+  font-weight: 500;
+}
 
 /* ── panel-action-btn hover (needs color-mix, not easily Tailwind) ── */
 .panel-action-btn:hover {
-  color: #111827;
-  border-color: color-mix(in srgb, var(--chart-text) 36%, transparent);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text-muted) 40%, transparent);
 }
 
-[data-theme="dark"] .panel-action-btn:hover {
-  color: #f4f7ff;
+/* ── Responsive: collapse sidebar below content width ── */
+@media (max-width: 900px) {
+  .sidebar { position: static !important; width: auto !important; height: auto !important; border-right: none !important; border-bottom: 1px solid var(--line); }
+  .main-col { margin-left: 0 !important; }
+  .sidebar-nav { display: flex; flex-wrap: wrap; }
+  .sidebar-nav a { border-left: none !important; border-bottom: 2px solid transparent; }
+  .sidebar-nav a.active { border-left-color: transparent; border-bottom-color: var(--signal); }
 }

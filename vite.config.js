@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
-import { loadLoadRunnerResult, createConsoleSummary } from "./loadrunner-raw-loader.js";
+import { createConsoleSummary } from "./loadrunner-raw-loader.js";
+import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryTpsSummaryByGroup, queryTpsSummaryPassFailByGroup, queryResponseTimeSeries } from "./loadrunner-duckdb-cache.js";
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -26,15 +27,95 @@ export default defineConfig({
               return;
             }
 
-            const result = await loadLoadRunnerResult(resultPath, { includeRows: true });
+            const cached = await openLoadRunnerCache(resultPath);
             sendJson(res, 200, {
-              summary: createConsoleSummary(result),
-              result,
+              session: cached.key,
+              result: cached.result,
+              cache: { rowCount: cached.rowCount },
             });
           } catch (error) {
             sendJson(res, 500, {
               error: error instanceof Error ? error.message : String(error),
             });
+          }
+        });
+        server.middlewares.use("/api/dashboard", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryDashboard(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
+              maxSeriesPerGraph: Number(url.searchParams.get("maxSeries")) || undefined,
+              focusGraphType: url.searchParams.get("focusGraphType") || undefined,
+              focusMeasurementId: Number(url.searchParams.get("focusMeasurementId")),
+            }));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/transactions", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTransactions(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || ""));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-summary", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || ""));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-summary-by-group", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsSummaryByGroup(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity"))));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-summary-pass-fail-by-group", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsSummaryPassFailByGroup(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity"))));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/response-time-series", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryResponseTimeSeries(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
+              maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
+              namePrefix: url.searchParams.get("namePrefix") || "",
+            }));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }
         });
       },

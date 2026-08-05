@@ -4,273 +4,333 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LoadRunner Raw Dashboard</title>
+  <link rel="preload" href="/fonts/SpaceGrotesk-Medium.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/src/styles.css">
 </head>
-<body class="m-0 font-sans text-[#0b1020] dark:text-[#eef4ff] min-h-screen" style="font-family: Inter, Segoe UI, Arial, sans-serif;">
-  <!-- ── Header ── -->
-  <header class="sticky top-0 z-[4] border-b border-black/7 dark:border-white/7 backdrop-blur-[20px] px-6 py-2 shadow-[0_10px_34px_rgba(43,58,103,0.06)] bg-[rgba(255,255,255,0.74)] dark:bg-[rgba(9,13,22,0.78)]">
-    <!-- Top bar: brand + theme toggle -->
-    <div class="flex items-center justify-between gap-4.5 mb-1.5">
-      <div class="flex items-center gap-3 min-w-55">
-        <div class="text-[15px] leading-[1.1] font-normal">
-          <strong class="font-black">LoadRunner Raw Loader</strong>
-        </div>
-      </div>
-      <button
-        id="themeToggle"
-        type="button"
-        class="theme-toggle h-7.5 min-w-23 border border-black/9 dark:border-white/12 rounded-full bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] cursor-pointer font-[inherit] text-[13px] font-medium px-3"
-      >Dark</button>
-    </div>
-
-    <!-- Control surface -->
-    <div class="p-[8px_10px_10px] border border-black/9 dark:border-white/12 rounded-xl bg-[rgba(255,255,255,0.7)] dark:bg-[rgba(14,20,33,0.72)] shadow-[var(--soft-shadow)]">
-      <!-- Path + Load button row -->
-      <div class="grid gap-2 items-end" style="grid-template-columns: minmax(320px,1fr) auto;">
-        <div class="path-field">
-          <label for="resultPath" class="block font-mono text-[10px] text-(--chart-text) mb-0.75 font-black tracking-[0.08em] uppercase" style="font-family: Consolas, 'SFMono-Regular', monospace;">Raw result path</label>
-          <input
-            id="resultPath"
-            value="D:\transfer-kantor\RawResults_12"
-            spellcheck="false"
-            class="w-full h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-        </div>
+<body class="m-0 min-h-screen text-(--text)">
+  <div class="app-shell">
+    <!-- ── Sidebar ── -->
+    <nav id="sidebar" class="sidebar fixed inset-y-0 left-0 w-55 flex flex-col border-r border-(--line) bg-(--surface) overflow-y-auto z-10" aria-label="Section navigation">
+      <div class="px-5 pt-4.5 pb-3.5 border-b border-(--line) text-[13px] font-bold tracking-[0.02em]">LoadRunner Raw Loader</div>
+      <ul class="sidebar-nav flex-1 py-2.5 overflow-y-auto">
+        <li><a href="#section-overview" data-nav-target="section-overview" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Overview</a></li>
+        <li><a href="#section-vusers" data-nav-target="section-vusers" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">VUsers Overall</a></li>
+        <li><a href="#section-tx-summary" data-nav-target="section-tx-summary" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary</a></li>
+        <li><a href="#section-tx-rps" data-nav-target="section-tx-rps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (RPS_)</a></li>
+        <li><a href="#section-rt-chart" data-nav-target="section-rt-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By Transaction</a></li>
+        <li><a href="#section-rt-api-chart" data-nav-target="section-rt-api-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By API</a></li>
+        <li><a href="#section-tps-chart" data-nav-target="section-tps-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS By Transaction</a></li>
+        <li><a href="#section-tps-summary" data-nav-target="section-tps-summary" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Summary By Transaction</a></li>
+        <li><a href="#section-infra-cpu" data-nav-target="section-infra-cpu" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">CPU Utilization</a></li>
+        <li><a href="#section-infra-memory" data-nav-target="section-infra-memory" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Memory Utilization</a></li>
+      </ul>
+      <div class="px-5 py-4.5 border-t border-(--line)">
         <button
-          id="loadBtn"
-          class="h-7.5 min-w-20.5 px-3 border border-[#05070d] dark:border-[#eef4ff] rounded-[9px] bg-[#05070d] dark:bg-[#eef4ff] text-white dark:text-[#090d16] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer shadow-[0_12px_26px_rgba(5,7,13,0.14)]"
-        >Load Result</button>
-      </div>
-
-      <!-- Filter controls row -->
-      <div class="grid gap-2 items-end mt-1.5" style="grid-template-columns: 96px 96px auto auto 120px auto auto minmax(160px,1fr);">
-        <div>
-          <label for="startTime" class="block font-mono text-[10px] text-(--chart-text) mb-0.75 font-black tracking-[0.08em] uppercase" style="font-family: Consolas, 'SFMono-Regular', monospace;">Start</label>
-          <input
-            id="startTime"
-            value="00:00:00"
-            inputmode="numeric"
-            class="w-full h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-        </div>
-        <div>
-          <label for="endTime" class="block font-mono text-[10px] text-(--chart-text) mb-0.75 font-black tracking-[0.08em] uppercase" style="font-family: Consolas, 'SFMono-Regular', monospace;">End</label>
-          <input
-            id="endTime"
-            value=""
-            placeholder="All"
-            inputmode="numeric"
-            class="w-full h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-        </div>
-        <button
-          id="applyTimeBtn"
+          id="themeToggle"
           type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-[#05070d] dark:border-[#eef4ff] rounded-[9px] bg-[#05070d] dark:bg-[#eef4ff] text-white dark:text-[#090d16] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer shadow-[0_12px_26px_rgba(5,7,13,0.14)]"
-        >Apply Filter</button>
-        <button
-          id="resetTimeBtn"
-          type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer"
-        >Reset Filter</button>
-        <div>
-          <label for="tpsGranularity" class="block font-mono text-[10px] text-(--chart-text) mb-0.75 font-black tracking-[0.08em] uppercase" style="font-family: Consolas, 'SFMono-Regular', monospace;">Granularity Grafik</label>
-          <input
-            id="tpsGranularity"
-            type="number"
-            value="10"
-            min="1"
-            step="1"
-            inputmode="numeric"
-            class="w-full h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-        </div>
-        <button
-          id="applyTpsGranularityBtn"
-          type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer"
-        >Apply Granularity</button>
-        <button
-          id="resetTpsGranularityBtn"
-          type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer"
-        >Reset Default</button>
-        <div class="muted text-sm">Time: HH:MM:SS. Granularity in seconds.</div>
+          class="w-full h-7 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) cursor-pointer font-[inherit] text-[12px] font-medium"
+        >Dark</button>
       </div>
+    </nav>
 
-      <!-- Group filter row -->
-      <div class="grid gap-2 items-end mt-1.5" style="grid-template-columns: minmax(180px,1fr) auto auto auto;">
-        <div>
-          <label for="groupFilter" class="block font-mono text-[10px] text-(--chart-text) mb-0.75 font-black tracking-[0.08em] uppercase" style="font-family: Consolas, 'SFMono-Regular', monospace;">Filter Group Name</label>
-          <input
-            id="groupFilter"
-            type="text"
-            placeholder="%mcm%"
-            class="w-full h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-        </div>
-        <button
-          id="applyGroupFilterBtn"
-          type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-[#05070d] dark:border-[#eef4ff] rounded-[9px] bg-[#05070d] dark:bg-[#eef4ff] text-white dark:text-[#090d16] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer shadow-[0_12px_26px_rgba(5,7,13,0.14)]"
-        >Apply</button>
-        <button
-          id="resetGroupFilterBtn"
-          type="button"
-          class="h-7.5 min-w-20.5 px-3 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer"
-        >Reset</button>
-        <div class="muted text-sm">Gunakan % sebagai wildcard. Contoh: %mcm%</div>
-      </div>
-    </div>
-  </header>
-
-  <!-- ── Main content ── -->
-  <main class="px-6 pt-3 pb-8 max-w-360 mx-auto">
-    <!-- Status bar -->
-    <div id="status" class="min-h-[18px] text-(--chart-text) font-mono text-[11px] mb-2 max-w-360" style="font-family: Consolas, 'SFMono-Regular', monospace;"></div>
-
-    <!-- Range info chips -->
-    <section
-      id="rangeInfo"
-      class="grid gap-3 mb-3"
-      style="grid-template-columns: repeat(2, minmax(260px, 1fr));"
-    ></section>
-
-    <!-- Metrics row -->
-    <section
-      id="metrics"
-      class="grid gap-3 mb-3.5"
-      style="grid-template-columns: repeat(5, minmax(140px, 1fr));"
-    ></section>
-
-    <!-- Panels grid -->
-    <section class="grid gap-3 items-start" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-
-      <!-- Transactions Summary table (wide) -->
-      <div class="panel wide overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          <span>Transactions Summary</span>
-          <span id="rangeLabel" class="muted"></span>
-        </div>
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
-            <tr>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Transaction</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Group</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Min (s)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Avg (s)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Max (s)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">P90 (s)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Std Deviation (s)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Success</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Fail</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Total</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">RT Points</th>
-            </tr>
-          </thead>
-          <tbody id="txBody"></tbody>
-        </table>
-      </div>
-
-      <!-- Response Time By Transaction chart -->
-      <div class="panel chart-panel wide overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          Response Time By Transaction
-        </div>
-        <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="transactionRtChart" class="block w-full h-full"></canvas></div>
-      </div>
-
-      <!-- VUsers Overall chart -->
-      <div class="panel chart-panel wide overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          VUsers Overall
-        </div>
-        <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="vusersChart" class="block w-full h-full"></canvas></div>
-      </div>
-
-      <!-- TPS By Transaction chart -->
-      <div class="panel chart-panel wide overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          <span>TPS By Transaction</span>
-          <span id="tpsGranularityLabel" class="muted"></span>
-        </div>
-        <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="tpsChart" class="block w-full h-full"></canvas></div>
-      </div>
-
-      <!-- TPS Summary By Transaction table (wide) -->
-      <div class="panel wide overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          TPS Summary By Transaction
-        </div>
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
-            <tr>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Transaction</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Group</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Min TPS</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Avg TPS</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Max TPS</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Points</th>
-            </tr>
-          </thead>
-          <tbody id="tpsBody"></tbody>
-        </table>
-      </div>
-
-      <!-- SiteScope CPU chart -->
-      <div class="panel chart-panel overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          SiteScope CPU Overall
-        </div>
-        <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeCpuChart" class="block w-full h-full"></canvas></div>
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
-            <tr>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Host</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Min (%)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Avg (%)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Max (%)</th>
-            </tr>
-          </thead>
-          <tbody id="siteScopeCpuBody"></tbody>
-        </table>
-      </div>
-
-      <!-- SiteScope Memory chart -->
-      <div class="panel chart-panel overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          SiteScope Memory Overall
-        </div>
-        <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeMemoryChart" class="block w-full h-full"></canvas></div>
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
-            <tr>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-left text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Host</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Min (%)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Avg (%)</th>
-              <th class="px-4.5 py-3 border-b border-black/9 dark:border-white/12 text-right text-[#7a8191] dark:text-[#96a3ba] text-[11px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(255,255,255,0.04)] tracking-[0.08em] uppercase whitespace-nowrap">Max (%)</th>
-            </tr>
-          </thead>
-          <tbody id="siteScopeMemoryBody"></tbody>
-        </table>
-      </div>
-
-      <!-- Time Series chart -->
-      <div class="panel chart-panel overflow-hidden bg-[rgba(255,255,255,0.88)] dark:bg-[rgba(14,20,33,0.88)] border border-black/9 dark:border-white/12 rounded-[10px] shadow-[var(--shadow)] backdrop-blur-[18px]">
-        <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-black/9 dark:border-white/12 font-black text-[11px] text-(--chart-text) font-mono tracking-[0.09em] uppercase gap-2.5" style="font-family: Consolas, 'SFMono-Regular', monospace;">
-          <span>Time Series</span>
-          <div class="panel-tools flex gap-2 items-center">
-            <select
-              id="seriesSelect"
-              class="w-[230px] h-7.5 px-2.25 border border-black/9 dark:border-white/12 rounded-[9px] bg-[rgba(255,255,255,0.84)] dark:bg-[rgba(10,15,25,0.78)] text-[#0b1020] dark:text-[#eef4ff] font-[inherit] text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-            ></select>
+    <div class="main-col ml-55">
+      <!-- ── Toolbar ── -->
+      <header id="toolbar" class="sticky top-0 z-5 border-b border-(--line) bg-(--surface) px-5 py-2.5">
+        <div class="flex flex-wrap items-end gap-2.5">
+          <div class="flex-1 min-w-80">
+            <label for="resultPath" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Raw result path</label>
+            <input
+              id="resultPath"
+              placeholder="C:\path\to\RawResults_XX"
+              spellcheck="false"
+              class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]"
+              style="font-family: var(--font-mono);"
+            >
           </div>
+          <button id="loadBtn" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer">Load Result</button>
         </div>
-        <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="seriesChart" class="block w-full h-full"></canvas></div>
-      </div>
 
-    </section>
-  </main>
+        <div class="flex flex-wrap items-end gap-2.5 mt-2">
+          <div style="width: 96px;">
+            <label for="startTime" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Start</label>
+            <input id="startTime" value="00:00:00" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+          </div>
+          <div style="width: 96px;">
+            <label for="endTime" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">End</label>
+            <input id="endTime" value="" placeholder="All" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+          </div>
+          <button id="applyTimeBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply Filter</button>
+          <button id="resetTimeBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset Filter</button>
+          <div style="width: 120px;">
+            <label for="tpsGranularity" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Granularity Grafik</label>
+            <input id="tpsGranularity" type="number" value="10" min="1" step="1" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+          </div>
+          <button id="applyTpsGranularityBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Apply Granularity</button>
+          <button id="resetTpsGranularityBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset Default</button>
+          <div class="text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Time: HH:MM:SS. Granularity in seconds.</div>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-2.5 mt-2">
+          <div class="flex-1 min-w-55">
+            <label for="groupFilter" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Filter Group Name</label>
+            <input id="groupFilter" type="text" placeholder="%mcm%" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+          </div>
+          <button id="applyGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
+          <button id="resetGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
+          <div class="text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Gunakan % sebagai wildcard. Contoh: %mcm%</div>
+        </div>
+      </header>
+
+      <main class="px-5 pt-4 max-w-360" style="padding-bottom: 60vh;">
+        <div id="status" class="min-h-[18px] text-(--chart-text) text-[11px] mb-3.5" style="font-family: var(--font-mono);"></div>
+
+        <!-- ── Overview ── -->
+        <section id="section-overview" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Overview</h2>
+          <div id="rangeInfo" class="grid gap-3 mb-3" style="grid-template-columns: repeat(2, minmax(260px, 1fr));"></div>
+          <div id="metrics" class="grid gap-3" style="grid-template-columns: repeat(5, minmax(140px, 1fr));"></div>
+        </section>
+
+        <!-- ── VUsers Overall ── -->
+        <section id="section-vusers" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">VUsers Overall</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">VUsers Overall</div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="vusersChart" class="block w-full h-full"></canvas></div>
+          </div>
+        </section>
+
+        <!-- ── Transactions Summary ── -->
+        <section id="section-tx-summary" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary</h2>
+          <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Transactions Summary</span>
+              <span id="rangeLabel" class="muted"></span>
+              <button id="showAllTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table data-table="tx" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="min">Min (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avg">Avg (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="max">Max (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile90">P90 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile95">P95 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile99">P99 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="stdDeviation">Std Deviation (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="success">Success <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="fail">Fail <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="samples">Total <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="txBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Transactions Summary (RPS_) ── -->
+        <section id="section-tx-rps" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary (RPS_)</h2>
+          <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Transactions Summary (RPS_)</span>
+              <button id="showAllRpsTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table data-table="txRps" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="min">Min (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avg">Avg (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="max">Max (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile90">P90 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile95">P95 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="percentile99">P99 (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="stdDeviation">Std Deviation (s) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="success">Success <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="fail">Fail <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="samples">Total <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="txRpsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Response Time By Transaction ── -->
+        <section id="section-rt-chart" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By Transaction</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="responseTime">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Response Time By Transaction (graph)</span>
+              <span id="seriesCountRt" class="muted"></span>
+            </div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="transactionRtChart" class="block w-full h-full"></canvas></div>
+          </div>
+        </section>
+
+        <!-- ── Response Time By API ── -->
+        <section id="section-rt-api-chart" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By API</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="responseTimeApi">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Response Time By API (graph)</span>
+            </div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="transactionRtApiChart" class="block w-full h-full"></canvas></div>
+          </div>
+        </section>
+
+        <!-- ── TPS By Transaction ── -->
+        <section id="section-tps-chart" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">TPS By Transaction</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>TPS By Transaction (graph)</span>
+              <span id="tpsGranularityLabel" class="muted"></span>
+              <span id="seriesCountTps" class="muted"></span>
+            </div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="tpsChart" class="block w-full h-full"></canvas></div>
+          </div>
+        </section>
+
+        <!-- ── TPS Summary By Transaction ── -->
+        <section id="section-tps-summary" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">TPS Summary By Transaction</h2>
+          <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>TPS Summary By Transaction</span>
+              <select id="tpsSummaryMode" class="h-6 px-2 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium normal-case cursor-pointer" style="font-family: var(--font-mono);">
+                <option value="transaction">By transaction</option>
+                <option value="group">By group</option>
+                <option value="passFailGroup">By pass / failed group</option>
+              </select>
+              <button id="showAllTpsTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table data-table="tpsSummary" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr id="tpsSummaryHead">
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="minTps">Min TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avgTps">Avg TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="maxTps">Max TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="points">Points <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="tpsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Infrastructure (SiteScope) ── -->
+        <section id="section-infra" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Infrastructure</h2>
+          <div class="panel overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div id="section-infra-cpu" class="chart-panel" data-chart-selector="siteScopeCpu">
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope CPU Overall</div>
+              <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeCpuChart" class="block w-full h-full"></canvas></div>
+              <div class="overflow-x-auto">
+                <table data-table="siteScopeCpu" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                  <thead>
+                    <tr>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="host">Host <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="min">Min (%) <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avg">Avg (%) <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="max">Max (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="siteScopeCpuBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="section-infra-memory" class="chart-panel" data-chart-selector="siteScopeMemory">
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope Memory Overall</div>
+              <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeMemoryChart" class="block w-full h-full"></canvas></div>
+              <div class="overflow-x-auto">
+                <table data-table="siteScopeMemory" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                  <thead>
+                    <tr>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="host">Host <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="min">Min (%) <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avg">Avg (%) <span class="sort-indicator text-(--signal)"></span></th>
+                      <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="max">Max (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="siteScopeMemoryBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="transactionModal" class="transaction-modal" hidden role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
+    <div class="transaction-modal-content">
+      <div class="transaction-modal-header">
+        <h2 id="transactionModalTitle">All Transactions</h2>
+        <button id="closeTransactionModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close all transactions">Close</button>
+      </div>
+      <div class="transaction-modal-table-wrap">
+        <table id="transactionModalTable" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+          <thead>
+            <tr>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="min">Min (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="avg">Avg (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="max">Max (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="percentile90">P90 (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="percentile95">P95 (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="percentile99">P99 (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="stdDeviation">Std Deviation (s) <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="success">Success <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="fail">Fail <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="samples">Total <span class="sort-indicator text-(--signal)"></span></th>
+            </tr>
+          </thead>
+          <tbody id="transactionModalBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="tpsModal" class="transaction-modal" hidden role="dialog" aria-modal="true" aria-labelledby="tpsModalTitle">
+    <div class="transaction-modal-content">
+      <div class="transaction-modal-header">
+        <h2 id="tpsModalTitle">TPS Summary</h2>
+        <button id="closeTpsModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close TPS summary">Close</button>
+      </div>
+      <div class="transaction-modal-table-wrap">
+        <table id="tpsModalTable" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+          <thead>
+            <tr id="tpsModalHead">
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="minTps">Min TPS <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="avgTps">Avg TPS <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="maxTps">Max TPS <span class="sort-indicator text-(--signal)"></span></th>
+              <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap bg-(--surface) cursor-pointer select-none" data-sort="points">Points <span class="sort-indicator text-(--signal)"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tpsModalBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <script src="/vendor/chart.umd.min.js"></script>
   <script type="module" src="/src/main.js"></script>

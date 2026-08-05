@@ -194,7 +194,7 @@ function parseSummaryIni(filePath) {
   };
 }
 
-async function parseGraphData(filePath, measurementsById, scenarioStartTime) {
+async function parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats) {
   const rows = [];
   const statsByMeasurement = new Map();
 
@@ -219,28 +219,39 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime) {
     if (![measurementId, timestamp, value, count, min, max, stddev].every(Number.isFinite)) continue;
 
     const measurement = measurementsById.get(measurementId);
-    const row = {
-      measurementId,
-      measurementName: measurement?.name ?? null,
-      graphIndex: measurement?.graphIndex ?? null,
-      graphType: measurement?.graphType ?? null,
-      timestamp,
-      isoUtc: epochToIso(timestamp),
-      elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
-      value,
-      count,
-      min,
-      max,
-      stddev,
-    };
+    const row = compactRows
+      ? {
+        measurementId,
+        elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
+        value,
+        count,
+        min,
+        max,
+        stddev,
+      }
+      : {
+        measurementId,
+        measurementName: measurement?.name ?? null,
+        graphIndex: measurement?.graphIndex ?? null,
+        graphType: measurement?.graphType ?? null,
+        timestamp,
+        isoUtc: epochToIso(timestamp),
+        elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
+        value,
+        count,
+        min,
+        max,
+        stddev,
+      };
 
-    rows.push(row);
+    if (includeRows && includeMeasurement(measurement)) rows.push(row);
 
+    if (!includeStats) continue;
     const current = statsByMeasurement.get(measurementId) ?? {
       measurementId,
-      measurementName: row.measurementName,
-      graphIndex: row.graphIndex,
-      graphType: row.graphType,
+        measurementName: measurement?.name ?? null,
+        graphIndex: measurement?.graphIndex ?? null,
+        graphType: measurement?.graphType ?? null,
       samples: 0,
       valueCount: 0,
       min: Number.POSITIVE_INFINITY,
@@ -274,7 +285,7 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime) {
   return { rows, stats };
 }
 
-async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioStartTime, includeRows) {
+async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats) {
   const parsedGraphs = [];
 
   for (const graph of graphs) {
@@ -284,7 +295,7 @@ async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioS
       continue;
     }
 
-    const parsed = await parseGraphData(filePath, measurementsById, scenarioStartTime);
+    const parsed = await parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats);
     parsedGraphs.push({
       ...graph,
       dataFile: filePath,
@@ -395,6 +406,10 @@ async function loadLoadRunnerResult(resultDir, options = {}) {
   const summary = parseSummaryIni(path.join(sumDataDir, "sum_dat.ini"));
   const offlineDefinitions = await parseOfflineDefinitions(resolvedResultDir);
   const includeRows = options.includeRows === true;
+  const includeOfflineRows = options.includeOfflineRows ?? includeRows;
+  const includeMeasurement = options.includeMeasurement ?? (() => true);
+  const compactRows = options.compactRows === true;
+  const includeStats = options.includeStats ?? true;
 
   const graphs = await parseAllGraphData(
     sumDataDir,
@@ -402,12 +417,15 @@ async function loadLoadRunnerResult(resultDir, options = {}) {
     summary.measurementsById,
     summary.general.scenarioStartTime,
     includeRows,
+    includeMeasurement,
+    compactRows,
+    includeStats,
   );
 
   const offline = await parseOfflineData(
     path.join(resolvedResultDir, "offline.dat"),
     offlineDefinitions,
-    includeRows,
+    includeOfflineRows,
   );
 
   const scriptGroups = parseScriptGroups(scenarioIni);
