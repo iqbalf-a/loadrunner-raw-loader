@@ -1,19 +1,15 @@
-import { formatHms, formatClockAt, parseHms, parsePositiveSeconds } from "./format.js";
+import { formatHms, formatClockAt, parseHms, parsePositiveSeconds, escapeHtml } from "./format.js";
 import {
   state,
   DEFAULT_GRAPH_GRANULARITY_SECONDS,
   resolveGroup,
   buildTransactions,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, tpsPoints, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
-import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsSummaryHead, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
+import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
+import { renderMetrics, renderTable, renderTpsSummaryTable, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 
-const TPS_SUMMARY_LABELS = {
-  transaction: "TPS Summary By Transaction",
-  group: "TPS Summary By Group",
-  passFailGroup: "TPS Summary By Pass/Failed Group",
-};
+const SERIES_MAX = 30;
 
 const chartAllSeries = {};
 
@@ -29,15 +25,16 @@ const els = {
   applyTimeBtn: document.getElementById("applyTimeBtn"),
   resetTimeBtn: document.getElementById("resetTimeBtn"),
   status: document.getElementById("status"),
+  scenarioInfo: document.getElementById("scenarioInfo"),
   rangeInfo: document.getElementById("rangeInfo"),
   metrics: document.getElementById("metrics"),
   txBody: document.getElementById("txBody"),
   txRpsBody: document.getElementById("txRpsBody"),
   showAllRpsTransactionsBtn: document.getElementById("showAllRpsTransactionsBtn"),
   tpsBody: document.getElementById("tpsBody"),
-  tpsSummaryHead: document.getElementById("tpsSummaryHead"),
-  tpsSummaryMode: document.getElementById("tpsSummaryMode"),
   showAllTpsTransactionsBtn: document.getElementById("showAllTpsTransactionsBtn"),
+  tpsApiBody: document.getElementById("tpsApiBody"),
+  showAllTpsApiBtn: document.getElementById("showAllTpsApiBtn"),
   tpsModal: document.getElementById("tpsModal"),
   tpsModalTitle: document.getElementById("tpsModalTitle"),
   tpsModalHead: document.getElementById("tpsModalHead"),
@@ -46,11 +43,14 @@ const els = {
   rangeLabel: document.getElementById("rangeLabel"),
   tpsGranularityLabel: document.getElementById("tpsGranularityLabel"),
   seriesCountRt: document.getElementById("seriesCountRt"),
+  seriesCountRtApi: document.getElementById("seriesCountRtApi"),
   seriesCountTps: document.getElementById("seriesCountTps"),
+  seriesCountTpsApi: document.getElementById("seriesCountTpsApi"),
   transactionRtChart: document.getElementById("transactionRtChart"),
   transactionRtApiChart: document.getElementById("transactionRtApiChart"),
   vusersChart: document.getElementById("vusersChart"),
   tpsChart: document.getElementById("tpsChart"),
+  tpsApiChart: document.getElementById("tpsApiChart"),
   siteScopeCpuChart: document.getElementById("siteScopeCpuChart"),
   siteScopeMemoryChart: document.getElementById("siteScopeMemoryChart"),
   siteScopeCpuBody: document.getElementById("siteScopeCpuBody"),
@@ -61,9 +61,47 @@ const els = {
   showAllTransactionsBtn: document.getElementById("showAllTransactionsBtn"),
   transactionModal: document.getElementById("transactionModal"),
   transactionModalTitle: document.getElementById("transactionModalTitle"),
+  transactionModalTable: document.getElementById("transactionModalTable"),
   transactionModalBody: document.getElementById("transactionModalBody"),
   closeTransactionModalBtn: document.getElementById("closeTransactionModalBtn"),
+  copyTransactionModalBtn: document.getElementById("copyTransactionModalBtn"),
+  tpsModalTable: document.getElementById("tpsModalTable"),
+  copyTpsModalBtn: document.getElementById("copyTpsModalBtn"),
 };
+
+function tableToTsv(table) {
+  const headerCells = [...table.querySelectorAll("thead th")].map((th) => {
+    const clone = th.cloneNode(true);
+    clone.querySelector(".sort-indicator")?.remove();
+    return clone.textContent.trim();
+  });
+  const bodyRows = [...table.querySelectorAll("tbody tr")].map((tr) =>
+    [...tr.querySelectorAll("td")].map((td) => td.textContent.trim()).join("\t"));
+  return [headerCells.join("\t"), ...bodyRows].join("\n");
+}
+
+async function copyTableRows(table, button) {
+  const text = tableToTsv(table);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+  const original = button.textContent;
+  button.textContent = "Copied!";
+  button.disabled = true;
+  setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+  }, 1200);
+}
 
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
@@ -76,26 +114,15 @@ function toggleTheme() {
   applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
 }
 
-function renderTpsChart(start, end) {
-  const tpsSeries = transactionSeries(
-    "es_tr_tprange_pass",
-    start,
-    end,
-    (rows) => tpsPoints(rows, start, end, state.appliedTpsGranularity),
-  ).map((s) => ({ ...s, groupName: resolveGroup(s.name) }));
+function renderTpsCharts(start, end) {
   els.tpsGranularityLabel.textContent = `${state.appliedTpsGranularity}s bucket`;
-  drawMultiLineChart(els.tpsChart, tpsSeries, start, end);
-}
-
-function getTpsSummaryModeRows() {
-  if (state.tpsSummaryMode === "group") return state.tpsSummaryByGroup;
-  if (state.tpsSummaryMode === "passFailGroup") return state.tpsSummaryPassFailByGroup;
-  return state.tpsSummary;
+  drawMultiLineChart(els.tpsChart, applySelection("tpsTransaction", seriesFromFlatRows(state.tpsSeriesRows ?? [])), start, end);
+  drawMultiLineChart(els.tpsApiChart, applySelection("tpsApi", seriesFromFlatRows(state.tpsApiSeriesRows ?? [])), start, end);
 }
 
 function renderTpsSummaryPanels() {
-  renderTpsSummaryHead(els.tpsSummaryHead, state.tpsSummaryMode);
-  renderTpsSummaryTable(getTpsSummaryModeRows(), els.tpsBody, els.showAllTpsTransactionsBtn, "tpsSummary", state.tpsSummaryMode);
+  renderTpsSummaryTable(state.tpsSummary, els.tpsBody, els.showAllTpsTransactionsBtn, "tpsSummary", "transaction");
+  renderTpsSummaryTable(state.tpsSummaryApi, els.tpsApiBody, els.showAllTpsApiBtn, "tpsSummaryApi", "api");
 }
 
 function applySelection(key, allSeries) {
@@ -127,7 +154,7 @@ function seriesFromFlatRows(rows) {
 function renderCharts(transactions, start, end) {
   drawMultiLineChart(
     els.transactionRtChart,
-    applySelection("responseTime", transactionSeries("es_tr_response_time", start, end, (rows) => rows.map((row) => ({ x: row.elapsedSeconds, y: row.value })))),
+    applySelection("responseTime", seriesFromFlatRows(state.responseTimeRows ?? [])),
     start,
     end,
   );
@@ -143,9 +170,9 @@ function renderCharts(transactions, start, end) {
     start,
     end,
   );
-  renderTpsChart(start, end);
+  renderTpsCharts(start, end);
   renderSiteScopeSection(els, start, end, applySelection);
-  ["responseTime", "responseTimeApi", "siteScopeCpu", "siteScopeMemory"].forEach(refreshExpandedChartSelector);
+  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "siteScopeCpu", "siteScopeMemory"].forEach(refreshExpandedChartSelector);
 }
 
 const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
@@ -160,6 +187,18 @@ function renderAll() {
   els.status.className = STATUS_BASE;
   const isAllRange = start === 0 && Math.round(end) === Math.round(duration);
   els.rangeLabel.textContent = `Filtered: ${formatHms(start)} - ${formatHms(end)}`;
+  const { companyName, sessionName, runDate } = state.data.result.scenario;
+  els.scenarioInfo.innerHTML = `
+    <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
+      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Project</div>
+      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${escapeHtml(companyName || "-")}</div>
+      ${runDate ? `<div class="mt-1 text-(--chart-text) text-[11px]" style="font-family: var(--font-mono);">${escapeHtml(runDate)}</div>` : ""}
+    </div>
+    <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
+      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Scenario</div>
+      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${escapeHtml(sessionName || "-")}</div>
+    </div>
+  `;
   els.rangeInfo.innerHTML = `
     <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
       <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">All Range</div>
@@ -181,6 +220,25 @@ function renderAll() {
   els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
 }
 
+async function withLoadTimer(loadingLabel, task) {
+  els.status.className = STATUS_BASE;
+  const startedAt = Date.now();
+  const timerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    els.status.textContent = `${loadingLabel}... ${elapsed}s`;
+  }, 100);
+  try {
+    await task();
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
+    els.status.textContent += ` | Updated in ${elapsed}s`;
+  } catch (error) {
+    els.status.textContent = error.message;
+    els.status.className = STATUS_ERR;
+  } finally {
+    clearInterval(timerInterval);
+  }
+}
+
 async function applyTimeFilter() {
   if (!state.data) return;
   const duration = state.data.result.scenario.durationSeconds || 0;
@@ -193,13 +251,11 @@ async function applyTimeFilter() {
   }
   state.appliedStart = start;
   state.appliedEnd = end;
-  try {
+  await withLoadTimer("Applying filter", async () => {
     await refreshDashboardData();
     renderAll();
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  }
+    els.status.textContent = `Filter applied: ${formatHms(start)} - ${formatHms(end)}`;
+  });
 }
 
 async function applyTpsGranularity() {
@@ -211,30 +267,22 @@ async function applyTpsGranularity() {
     return;
   }
   state.appliedTpsGranularity = tpsGranularity;
-  els.status.className = STATUS_BASE;
-  try {
+  await withLoadTimer("Applying granularity", async () => {
     await refreshDashboardData();
     renderAll();
     els.status.textContent = `Granularity grafik applied: ${tpsGranularity}s bucket`;
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  }
+  });
 }
 
 async function resetTpsGranularity() {
   if (!state.data) return;
   els.tpsGranularity.value = String(DEFAULT_GRAPH_GRANULARITY_SECONDS);
   state.appliedTpsGranularity = DEFAULT_GRAPH_GRANULARITY_SECONDS;
-  els.status.className = STATUS_BASE;
-  try {
+  await withLoadTimer("Resetting granularity", async () => {
     await refreshDashboardData();
     renderAll();
     els.status.textContent = `Granularity grafik reset to default: ${DEFAULT_GRAPH_GRANULARITY_SECONDS}s bucket`;
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  }
+  });
 }
 
 async function loadResult() {
@@ -278,6 +326,10 @@ async function loadResult() {
   }
 }
 
+function extraNamesParam(key) {
+  return JSON.stringify(state.chartSelections[key] ?? []);
+}
+
 async function refreshDashboardData() {
   const { session, result } = state.data;
   const start = state.appliedStart;
@@ -289,31 +341,37 @@ async function refreshDashboardData() {
     granularity: String(state.appliedTpsGranularity),
   });
   const [
-    dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse,
-    responseTimeApiResponse, tpsSummaryByGroupResponse, tpsSummaryPassFailByGroupResponse,
+    dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse, tpsSummaryApiResponse,
+    responseTimeResponse, responseTimeApiResponse, tpsSeriesResponse, tpsApiSeriesResponse,
   ] = await Promise.all([
     fetch(`/api/dashboard?${params}`),
-    fetch(`/api/transactions?${params}&limit=500&offset=0`),
-    fetch(`/api/transactions?${params}&limit=500&offset=0&namePrefix=RPS_`),
-    fetch(`/api/tps-summary?${params}&limit=500&offset=0`),
-    fetch(`/api/response-time-series?${params}&namePrefix=RPS_&maxSeries=30`),
-    fetch(`/api/tps-summary-by-group?${params}`),
-    fetch(`/api/tps-summary-pass-fail-by-group?${params}`),
+    fetch(`/api/transactions?${params}&offset=0&namePrefix=BP`),
+    fetch(`/api/transactions?${params}&offset=0&namePrefix=RPS_`),
+    fetch(`/api/tps-summary?${params}&offset=0&namePrefix=BP`),
+    fetch(`/api/tps-summary?${params}&offset=0&namePrefix=RPS_`),
+    fetch(`/api/response-time-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTime"))}`),
+    fetch(`/api/response-time-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTimeApi"))}`),
+    fetch(`/api/tps-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsTransaction"))}`),
+    fetch(`/api/tps-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsApi"))}`),
   ]);
   const dashboard = await dashboardResponse.json();
   const transactions = await transactionsResponse.json();
   const rpsTransactions = await rpsTransactionsResponse.json();
   const tpsSummary = await tpsSummaryResponse.json();
+  const tpsSummaryApi = await tpsSummaryApiResponse.json();
+  const responseTime = await responseTimeResponse.json();
   const responseTimeApi = await responseTimeApiResponse.json();
-  const tpsSummaryByGroup = await tpsSummaryByGroupResponse.json();
-  const tpsSummaryPassFailByGroup = await tpsSummaryPassFailByGroupResponse.json();
+  const tpsSeries = await tpsSeriesResponse.json();
+  const tpsApiSeries = await tpsApiSeriesResponse.json();
   if (!dashboardResponse.ok) throw new Error(dashboard.error || "Dashboard query failed");
   if (!transactionsResponse.ok) throw new Error(transactions.error || "Transaction query failed");
   if (!rpsTransactionsResponse.ok) throw new Error(rpsTransactions.error || "RPS transaction query failed");
   if (!tpsSummaryResponse.ok) throw new Error(tpsSummary.error || "TPS summary query failed");
+  if (!tpsSummaryApiResponse.ok) throw new Error(tpsSummaryApi.error || "TPS summary by API query failed");
+  if (!responseTimeResponse.ok) throw new Error(responseTime.error || "Response time by transaction query failed");
   if (!responseTimeApiResponse.ok) throw new Error(responseTimeApi.error || "Response time by API query failed");
-  if (!tpsSummaryByGroupResponse.ok) throw new Error(tpsSummaryByGroup.error || "TPS summary by group query failed");
-  if (!tpsSummaryPassFailByGroupResponse.ok) throw new Error(tpsSummaryPassFailByGroup.error || "TPS summary pass/fail by group query failed");
+  if (!tpsSeriesResponse.ok) throw new Error(tpsSeries.error || "TPS by transaction series query failed");
+  if (!tpsApiSeriesResponse.ok) throw new Error(tpsApiSeries.error || "TPS by API series query failed");
 
   const graphs = new Map(result.graphs.map((graph) => [graph.type, graph]));
   for (const graph of result.graphs) graph.rows = [];
@@ -339,17 +397,17 @@ async function refreshDashboardData() {
     groupName: resolveGroup(transaction.name),
   }));
   state.tpsSummary = tpsSummary.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
+  state.tpsSummaryApi = tpsSummaryApi.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
+  state.responseTimeRows = responseTime.rows;
   state.responseTimeApiRows = responseTimeApi.rows;
-  state.tpsSummaryByGroup = tpsSummaryByGroup.rows;
-  state.tpsSummaryPassFailByGroup = tpsSummaryPassFailByGroup.rows;
+  state.tpsSeriesRows = tpsSeries.rows;
+  state.tpsApiSeriesRows = tpsApiSeries.rows;
   state.seriesCountByType = dashboard.seriesCountByType ?? {};
-  const seriesHint = (graphType) => {
-    const total = state.seriesCountByType[graphType] ?? 0;
-    const shown = Math.min(total, dashboard.maxSeriesPerGraph ?? total);
-    return total > shown ? `(top ${shown} of ${total} by volume)` : "";
-  };
-  els.seriesCountRt.textContent = seriesHint("es_tr_response_time");
-  els.seriesCountTps.textContent = seriesHint("es_tr_tprange_pass");
+  const capHint = (total) => (total > SERIES_MAX ? `(top ${Math.min(total, SERIES_MAX)} of ${total} by volume)` : "");
+  els.seriesCountRt.textContent = capHint(responseTime.total ?? 0);
+  els.seriesCountRtApi.textContent = capHint(responseTimeApi.total ?? 0);
+  els.seriesCountTps.textContent = capHint(tpsSeries.total ?? 0);
+  els.seriesCountTpsApi.textContent = capHint(tpsApiSeries.total ?? 0);
 }
 
 function applyGroupFilter() {
@@ -378,13 +436,11 @@ async function resetTimeFilter() {
   els.endTime.value = formatHms(duration);
   state.appliedStart = 0;
   state.appliedEnd = duration;
-  try {
+  await withLoadTimer("Resetting filter", async () => {
     await refreshDashboardData();
     renderAll();
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  }
+    els.status.textContent = `Filter reset: ${formatHms(0)} - ${formatHms(duration)}`;
+  });
 }
 
 function syncToolbarHeight() {
@@ -430,7 +486,8 @@ function getTableRows(tableKey) {
   switch (tableKey) {
     case "tx": return buildTransactions();
     case "txRps": return state.rpsTransactions;
-    case "tpsSummary": return getTpsSummaryModeRows();
+    case "tpsSummary": return state.tpsSummary;
+    case "tpsSummaryApi": return state.tpsSummaryApi;
     default: return [];
   }
 }
@@ -451,13 +508,6 @@ function redrawCharts() {
   if (!state.data) return;
   const duration = state.data.result.scenario.durationSeconds || 0;
   renderCharts(buildTransactions(), state.appliedStart, state.appliedEnd || duration);
-}
-
-function onTpsSummaryModeChange() {
-  state.tpsSummaryMode = els.tpsSummaryMode.value;
-  state.sort.tpsSummary = { key: state.tpsSummaryMode === "transaction" ? "name" : "groupName", dir: "asc" };
-  renderTpsSummaryPanels();
-  updateSortIndicators();
 }
 
 function initSortableTables() {
@@ -485,15 +535,17 @@ els.applyTimeBtn.addEventListener("click", applyTimeFilter);
 els.resetTimeBtn.addEventListener("click", resetTimeFilter);
 els.applyGroupFilterBtn.addEventListener("click", applyGroupFilter);
 els.resetGroupFilterBtn.addEventListener("click", resetGroupFilter);
-els.showAllTransactionsBtn.addEventListener("click", () => openTransactionModal(els, buildTransactions(), "All Transactions", "tx"));
+els.showAllTransactionsBtn.addEventListener("click", () => openTransactionModal(els, buildTransactions(), "All Transactions (BP)", "tx"));
 els.showAllRpsTransactionsBtn.addEventListener("click", () => openTransactionModal(els, state.rpsTransactions, "All Transactions (RPS_)", "txRps"));
 els.closeTransactionModalBtn.addEventListener("click", () => closeTransactionModal(els));
+els.copyTransactionModalBtn.addEventListener("click", () => copyTableRows(els.transactionModalTable, els.copyTransactionModalBtn));
 els.transactionModal.addEventListener("click", (event) => {
   if (event.target === els.transactionModal) closeTransactionModal(els);
 });
-els.showAllTpsTransactionsBtn.addEventListener("click", () => openTpsModal(els, getTpsSummaryModeRows(), TPS_SUMMARY_LABELS[state.tpsSummaryMode], "tpsSummary", state.tpsSummaryMode));
-els.tpsSummaryMode.addEventListener("change", onTpsSummaryModeChange);
+els.showAllTpsTransactionsBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummary, "TPS (Chart + Table)", "tpsSummary", "transaction"));
+els.showAllTpsApiBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummaryApi, "RPS (Chart + Table)", "tpsSummaryApi", "api"));
 els.closeTpsModalBtn.addEventListener("click", () => closeTpsModal(els));
+els.copyTpsModalBtn.addEventListener("click", () => copyTableRows(els.tpsModalTable, els.copyTpsModalBtn));
 els.tpsModal.addEventListener("click", (event) => {
   if (event.target === els.tpsModal) closeTpsModal(els);
 });
@@ -517,13 +569,43 @@ document.addEventListener("keydown", (event) => {
   else if (!els.tpsModal.hidden) closeTpsModal(els);
   else closeExpandedPanel();
 });
-["responseTime", "responseTimeApi", "siteScopeCpu", "siteScopeMemory"].forEach((key) => {
-  configureChartSelector(
-    key,
-    () => chartAllSeries[key]?.map((s) => s.name) ?? [],
-    () => state.chartSelections[key] ?? [],
-    (selected) => { state.chartSelections[key] = selected; redrawCharts(); },
-  );
+async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingNames) {
+  if (!state.data) return;
+  const { session, result } = state.data;
+  const duration = result.scenario.durationSeconds || 0;
+  const params = new URLSearchParams({
+    session,
+    start: String(state.appliedStart),
+    end: String(state.appliedEnd || duration),
+    granularity: String(state.appliedTpsGranularity),
+    namePrefix,
+    maxSeries: String(SERIES_MAX),
+    extraNames: JSON.stringify([...(state.chartSelections[key] ?? []), ...missingNames]),
+  });
+  const response = await fetch(`${endpoint}?${params}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Series query failed");
+  state[rowsField] = payload.rows;
+}
+
+["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "siteScopeCpu", "siteScopeMemory"].forEach((key) => {
+  const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
+  const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
+  if (key === "responseTime") {
+    configureChartSelector(key, () => state.transactions.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing));
+  } else if (key === "responseTimeApi") {
+    configureChartSelector(key, () => state.rpsTransactions.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing));
+  } else if (key === "tpsTransaction") {
+    configureChartSelector(key, () => state.tpsSummary.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing));
+  } else if (key === "tpsApi") {
+    configureChartSelector(key, () => state.tpsSummaryApi.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing));
+  } else {
+    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected);
+  }
 });
 
 setupChartPanelActions();

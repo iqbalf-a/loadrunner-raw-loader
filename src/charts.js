@@ -3,10 +3,46 @@ import { graphByType, rowsByMeasurement } from "./state.js";
 
 const chartInstances = new WeakMap();
 const chartSelectors = new Map();
+const searchQueries = new Map();
 export const MAX_SELECTED_SERIES = 10;
+const SEARCH_RESULTS_LIMIT = 150;
 
-export function configureChartSelector(key, getNames, getSelected, setSelected) {
-  chartSelectors.set(key, { getNames, getSelected, setSelected });
+// getAllNames: full searchable universe (may include series with no data loaded yet).
+// getLoadedNames: series currently fetched and ready to plot (the default top-N pool).
+// ensureLoaded(names): optional async hook to fetch data for names picked via search that
+// aren't in the loaded pool yet — lets users pin a specific transaction outside the top-N.
+export function configureChartSelector(key, getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded) {
+  chartSelectors.set(key, { getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded });
+}
+
+function selectorListHtml(names, selected) {
+  if (!names.length) return `<div class="chart-series-selector-empty muted">No matches</div>`;
+  return names.map((name) => `
+    <label><input type="checkbox" value="${escapeHtml(name)}" ${selected.includes(name) ? "checked" : ""}> <span>${escapeHtml(name)}</span></label>
+  `).join("");
+}
+
+function renderSelectorList(panel) {
+  const key = panel.dataset.chartSelector;
+  const config = chartSelectors.get(key);
+  const selector = panel.querySelector(".chart-series-selector");
+  if (!config || !selector) return;
+
+  const allNames = config.getAllNames();
+  const loadedNames = new Set(config.getLoadedNames());
+  let selected = config.getSelected().filter((name) => allNames.includes(name));
+  if (!selected.length && loadedNames.size) {
+    selected = [...loadedNames].slice(0, MAX_SELECTED_SERIES);
+    config.setSelected(selected);
+  }
+
+  const query = (searchQueries.get(key) ?? "").trim().toLowerCase();
+  const visibleNames = query
+    ? allNames.filter((name) => name.toLowerCase().includes(query)).slice(0, SEARCH_RESULTS_LIMIT)
+    : allNames.filter((name) => loadedNames.has(name) || selected.includes(name));
+
+  selector.querySelector(".chart-series-selector-count").textContent = `${selected.length}/${MAX_SELECTED_SERIES}`;
+  selector.querySelector(".chart-series-selector-list").innerHTML = selectorListHtml(visibleNames, selected);
 }
 
 function renderChartSelector(panel) {
@@ -17,20 +53,22 @@ function renderChartSelector(panel) {
   if (!selector) {
     selector = document.createElement("div");
     selector.className = "chart-series-selector";
+    selector.innerHTML = `
+      <div class="chart-series-selector-heading">
+        <span>Select up to ${MAX_SELECTED_SERIES} series</span>
+        <span class="chart-series-selector-count"></span>
+      </div>
+      <input type="search" class="chart-series-search" placeholder="Cari transaksi...">
+      <div class="chart-series-selector-list"></div>
+    `;
     panel.querySelector(".panel-title")?.after(selector);
+    selector.querySelector(".chart-series-search").addEventListener("input", (event) => {
+      searchQueries.set(key, event.target.value);
+      renderSelectorList(panel);
+    });
   }
-
-  const names = config.getNames();
-  let selected = config.getSelected().filter((name) => names.includes(name));
-  if (!selected.length && names.length) {
-    selected = names.slice(0, MAX_SELECTED_SERIES);
-    config.setSelected(selected);
-  }
-  selector.innerHTML = `
-    <div class="chart-series-selector-heading">Select up to ${MAX_SELECTED_SERIES} series <span>${selected.length}/${MAX_SELECTED_SERIES}</span></div>
-    <div class="chart-series-selector-list">${names.map((name) => `
-      <label><input type="checkbox" value="${escapeHtml(name)}" ${selected.includes(name) ? "checked" : ""}> <span>${escapeHtml(name)}</span></label>
-    `).join("")}</div>`;
+  selector.querySelector(".chart-series-search").value = searchQueries.get(key) ?? "";
+  renderSelectorList(panel);
 }
 
 function escapeHtml(value) {
@@ -101,7 +139,7 @@ export function refreshExpandedChartSelector(key) {
   if (panel) renderChartSelector(panel);
 }
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   const input = event.target.closest(".chart-series-selector input[type='checkbox']");
   if (!input) return;
   const panel = input.closest(".chart-panel");
@@ -111,6 +149,16 @@ document.addEventListener("change", (event) => {
   if (selected.length > MAX_SELECTED_SERIES) {
     input.checked = false;
     return;
+  }
+  const loadedNames = new Set(config.getLoadedNames());
+  const missing = selected.filter((name) => !loadedNames.has(name));
+  if (missing.length && config.ensureLoaded) {
+    input.disabled = true;
+    try {
+      await config.ensureLoaded(missing);
+    } finally {
+      input.disabled = false;
+    }
   }
   config.setSelected(selected);
   renderChartSelector(panel);

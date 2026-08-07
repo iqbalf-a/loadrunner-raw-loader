@@ -1,4 +1,4 @@
-export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 10;
+export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 5;
 export const TRANSACTION_SUMMARY_LIMIT = 20;
 
 export const state = {
@@ -6,12 +6,12 @@ export const state = {
   transactions: [],
   rpsTransactions: [],
   tpsSummary: [],
-  tpsSummaryByGroup: [],
-  tpsSummaryPassFailByGroup: [],
-  tpsSummaryMode: "transaction",
+  tpsSummaryApi: [],
   chartSelections: {
     responseTime: [],
     responseTimeApi: [],
+    tpsTransaction: [],
+    tpsApi: [],
     siteScopeCpu: [],
     siteScopeMemory: [],
   },
@@ -24,6 +24,7 @@ export const state = {
     tx: { key: "name", dir: "asc" },
     txRps: { key: "name", dir: "asc" },
     tpsSummary: { key: "name", dir: "asc" },
+    tpsSummaryApi: { key: "name", dir: "asc" },
     siteScopeCpu: { key: "host", dir: "asc" },
     siteScopeMemory: { key: "host", dir: "asc" },
   },

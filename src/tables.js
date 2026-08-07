@@ -91,12 +91,8 @@ const TPS_MODE_COLUMNS = {
     ["name", "Transaction", "left"], ["groupName", "Group", "left"],
     ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
   ],
-  group: [
-    ["groupName", "Group", "left"],
-    ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
-  ],
-  passFailGroup: [
-    ["groupName", "Group", "left"], ["pass", "Pass"], ["fail", "Fail"], ["total", "Total"],
+  api: [
+    ["name", "API", "left"], ["groupName", "Group", "left"],
     ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
   ],
 };
@@ -111,31 +107,6 @@ function tpsCell(value, align = "right", cls = "") {
 }
 
 export function renderTpsSummaryRows(rows, mode = "transaction") {
-  if (mode === "group") {
-    return rows.map((tx) => `
-      <tr class="hover:bg-(--surface)">
-        ${tpsCell(escapeHtml(tx.groupName ?? "-"), "left")}
-        ${tpsCell(tx.minTps.toFixed(3))}
-        ${tpsCell(tx.avgTps.toFixed(3))}
-        ${tpsCell(tx.maxTps.toFixed(3))}
-        ${tpsCell(fmtNumber(tx.points), "right", "muted")}
-      </tr>
-    `).join("");
-  }
-  if (mode === "passFailGroup") {
-    return rows.map((tx) => `
-      <tr class="hover:bg-(--surface)">
-        ${tpsCell(escapeHtml(tx.groupName ?? "-"), "left")}
-        ${tpsCell(fmtNumber(tx.pass), "right", "ok")}
-        ${tpsCell(fmtNumber(tx.fail), "right", "fail")}
-        ${tpsCell(fmtNumber(tx.total))}
-        ${tpsCell(tx.minTps.toFixed(3))}
-        ${tpsCell(tx.avgTps.toFixed(3))}
-        ${tpsCell(tx.maxTps.toFixed(3))}
-        ${tpsCell(fmtNumber(tx.points), "right", "muted")}
-      </tr>
-    `).join("");
-  }
   return rows.map((tx) => `
     <tr class="hover:bg-(--surface)">
       ${tpsCell(escapeHtml(tx.name), "left")}

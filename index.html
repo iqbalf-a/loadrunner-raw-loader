@@ -13,17 +13,22 @@
     <!-- ── Sidebar ── -->
     <nav id="sidebar" class="sidebar fixed inset-y-0 left-0 w-55 flex flex-col border-r border-(--line) bg-(--surface) overflow-y-auto z-10" aria-label="Section navigation">
       <div class="px-5 pt-4.5 pb-3.5 border-b border-(--line) text-[13px] font-bold tracking-[0.02em]">LoadRunner Raw Loader</div>
+      <div class="nav-legend flex flex-wrap items-center gap-x-3.5 gap-y-1 px-5 py-2 border-b border-(--line) text-[10px] text-(--chart-text)" style="font-family: var(--font-mono);">
+        <span class="flex items-center gap-1.5"><i class="nav-dot nav-dot-chart"></i>Chart</span>
+        <span class="flex items-center gap-1.5"><i class="nav-dot nav-dot-table"></i>Table</span>
+        <span class="flex items-center gap-1.5"><i class="nav-dot nav-dot-mixed"></i>Chart+Table</span>
+      </div>
       <ul class="sidebar-nav flex-1 py-2.5 overflow-y-auto">
         <li><a href="#section-overview" data-nav-target="section-overview" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Overview</a></li>
-        <li><a href="#section-vusers" data-nav-target="section-vusers" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">VUsers Overall</a></li>
-        <li><a href="#section-tx-summary" data-nav-target="section-tx-summary" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary</a></li>
-        <li><a href="#section-tx-rps" data-nav-target="section-tx-rps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (RPS_)</a></li>
-        <li><a href="#section-rt-chart" data-nav-target="section-rt-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By Transaction</a></li>
-        <li><a href="#section-rt-api-chart" data-nav-target="section-rt-api-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By API</a></li>
-        <li><a href="#section-tps-chart" data-nav-target="section-tps-chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS By Transaction</a></li>
-        <li><a href="#section-tps-summary" data-nav-target="section-tps-summary" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Summary By Transaction</a></li>
-        <li><a href="#section-infra-cpu" data-nav-target="section-infra-cpu" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">CPU Utilization</a></li>
-        <li><a href="#section-infra-memory" data-nav-target="section-infra-memory" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Memory Utilization</a></li>
+        <li><a href="#section-vusers" data-nav-target="section-vusers" data-nav-type="chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">VUsers Overall</a></li>
+        <li><a href="#section-tx-summary" data-nav-target="section-tx-summary" data-nav-type="table" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (BP)</a></li>
+        <li><a href="#section-tx-rps" data-nav-target="section-tx-rps" data-nav-type="table" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (RPS_)</a></li>
+        <li><a href="#section-rt-chart" data-nav-target="section-rt-chart" data-nav-type="chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By Transaction</a></li>
+        <li><a href="#section-rt-api-chart" data-nav-target="section-rt-api-chart" data-nav-type="chart" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By API</a></li>
+        <li><a href="#section-tps-chart" data-nav-target="section-tps-chart" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS</a></li>
+        <li><a href="#section-tps-api-chart" data-nav-target="section-tps-api-chart" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">RPS</a></li>
+        <li><a href="#section-infra-cpu" data-nav-target="section-infra-cpu" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">CPU Utilization</a></li>
+        <li><a href="#section-infra-memory" data-nav-target="section-infra-memory" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Memory Utilization</a></li>
       </ul>
       <div class="px-5 py-4.5 border-t border-(--line)">
         <button
@@ -64,7 +69,7 @@
           <button id="resetTimeBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset Filter</button>
           <div style="width: 120px;">
             <label for="tpsGranularity" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Granularity Grafik</label>
-            <input id="tpsGranularity" type="number" value="10" min="1" step="1" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+            <input id="tpsGranularity" type="number" value="5" min="1" step="1" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
           </div>
           <button id="applyTpsGranularityBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Apply Granularity</button>
           <button id="resetTpsGranularityBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset Default</button>
@@ -82,31 +87,32 @@
         </div>
       </header>
 
-      <main class="px-5 pt-4 max-w-360" style="padding-bottom: 60vh;">
+      <main class="px-5 pt-4 w-full" style="padding-bottom: 60vh;">
         <div id="status" class="min-h-[18px] text-(--chart-text) text-[11px] mb-3.5" style="font-family: var(--font-mono);"></div>
 
         <!-- ── Overview ── -->
         <section id="section-overview" class="app-section mb-8.5">
           <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Overview</h2>
+          <div id="scenarioInfo" class="grid gap-3 mb-3" style="grid-template-columns: repeat(2, minmax(260px, 1fr));"></div>
           <div id="rangeInfo" class="grid gap-3 mb-3" style="grid-template-columns: repeat(2, minmax(260px, 1fr));"></div>
           <div id="metrics" class="grid gap-3" style="grid-template-columns: repeat(5, minmax(140px, 1fr));"></div>
         </section>
 
         <!-- ── VUsers Overall ── -->
         <section id="section-vusers" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">VUsers Overall</h2>
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">VUsers Overall (Chart)</h2>
           <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
-            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">VUsers Overall</div>
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">VUsers Overall (Chart)</div>
             <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="vusersChart" class="block w-full h-full"></canvas></div>
           </div>
         </section>
 
         <!-- ── Transactions Summary ── -->
         <section id="section-tx-summary" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary</h2>
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary (BP) (Table)</h2>
           <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
             <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>Transactions Summary</span>
+              <span>Transactions Summary (BP) (Table)</span>
               <span id="rangeLabel" class="muted"></span>
               <button id="showAllTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
             </div>
@@ -136,10 +142,10 @@
 
         <!-- ── Transactions Summary (RPS_) ── -->
         <section id="section-tx-rps" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary (RPS_)</h2>
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Transactions Summary (RPS_) (Table)</h2>
           <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
             <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>Transactions Summary (RPS_)</span>
+              <span>Transactions Summary (RPS_) (Table)</span>
               <button id="showAllRpsTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
             </div>
             <div class="overflow-x-auto">
@@ -168,10 +174,10 @@
 
         <!-- ── Response Time By Transaction ── -->
         <section id="section-rt-chart" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By Transaction</h2>
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By Transaction (Chart)</h2>
           <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="responseTime">
             <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>Response Time By Transaction (graph)</span>
+              <span>Response Time By Transaction (Chart)</span>
               <span id="seriesCountRt" class="muted"></span>
             </div>
             <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="transactionRtChart" class="block w-full h-full"></canvas></div>
@@ -180,45 +186,31 @@
 
         <!-- ── Response Time By API ── -->
         <section id="section-rt-api-chart" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By API</h2>
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Response Time By API (Chart)</h2>
           <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="responseTimeApi">
             <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>Response Time By API (graph)</span>
+              <span>Response Time By API (Chart)</span>
+              <span id="seriesCountRtApi" class="muted"></span>
             </div>
             <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="transactionRtApiChart" class="block w-full h-full"></canvas></div>
           </div>
         </section>
 
-        <!-- ── TPS By Transaction ── -->
+        <!-- ── TPS (Chart + Table) ── -->
         <section id="section-tps-chart" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">TPS By Transaction</h2>
-          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">TPS (Chart + Table)</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="tpsTransaction">
             <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>TPS By Transaction (graph)</span>
+              <span>TPS (Chart + Table)</span>
               <span id="tpsGranularityLabel" class="muted"></span>
               <span id="seriesCountTps" class="muted"></span>
-            </div>
-            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="tpsChart" class="block w-full h-full"></canvas></div>
-          </div>
-        </section>
-
-        <!-- ── TPS Summary By Transaction ── -->
-        <section id="section-tps-summary" class="app-section mb-8.5">
-          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">TPS Summary By Transaction</h2>
-          <div class="panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
-            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
-              <span>TPS Summary By Transaction</span>
-              <select id="tpsSummaryMode" class="h-6 px-2 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium normal-case cursor-pointer" style="font-family: var(--font-mono);">
-                <option value="transaction">By transaction</option>
-                <option value="group">By group</option>
-                <option value="passFailGroup">By pass / failed group</option>
-              </select>
               <button id="showAllTpsTransactionsBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
             </div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="tpsChart" class="block w-full h-full"></canvas></div>
             <div class="overflow-x-auto">
               <table data-table="tpsSummary" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
                 <thead>
-                  <tr id="tpsSummaryHead">
+                  <tr>
                     <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="name">Transaction <span class="sort-indicator text-(--signal)"></span></th>
                     <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
                     <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="minTps">Min TPS <span class="sort-indicator text-(--signal)"></span></th>
@@ -233,12 +225,40 @@
           </div>
         </section>
 
+        <!-- ── RPS (Chart + Table) ── -->
+        <section id="section-tps-api-chart" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">RPS (Chart + Table)</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]" data-chart-selector="tpsApi">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>RPS (Chart + Table)</span>
+              <span id="seriesCountTpsApi" class="muted"></span>
+              <button id="showAllTpsApiBtn" type="button" hidden class="panel-action-btn ml-auto h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+            </div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="tpsApiChart" class="block w-full h-full"></canvas></div>
+            <div class="overflow-x-auto">
+              <table data-table="tpsSummaryApi" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="name">API <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="groupName">Group <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="minTps">Min TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="avgTps">Avg TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="maxTps">Max TPS <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="points">Points <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="tpsApiBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- ── Infrastructure (SiteScope) ── -->
         <section id="section-infra" class="app-section mb-8.5">
           <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Infrastructure</h2>
           <div class="panel overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
             <div id="section-infra-cpu" class="chart-panel" data-chart-selector="siteScopeCpu">
-              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope CPU Overall</div>
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope CPU Overall (Chart + Table)</div>
               <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeCpuChart" class="block w-full h-full"></canvas></div>
               <div class="overflow-x-auto">
                 <table data-table="siteScopeCpu" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
@@ -256,7 +276,7 @@
             </div>
 
             <div id="section-infra-memory" class="chart-panel" data-chart-selector="siteScopeMemory">
-              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope Memory Overall</div>
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope Memory Overall (Chart + Table)</div>
               <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeMemoryChart" class="block w-full h-full"></canvas></div>
               <div class="overflow-x-auto">
                 <table data-table="siteScopeMemory" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
@@ -282,7 +302,10 @@
     <div class="transaction-modal-content">
       <div class="transaction-modal-header">
         <h2 id="transactionModalTitle">All Transactions</h2>
-        <button id="closeTransactionModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close all transactions">Close</button>
+        <div class="flex items-center gap-2">
+          <button id="copyTransactionModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Copy all rows">Copy</button>
+          <button id="closeTransactionModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close all transactions">Close</button>
+        </div>
       </div>
       <div class="transaction-modal-table-wrap">
         <table id="transactionModalTable" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
@@ -312,7 +335,10 @@
     <div class="transaction-modal-content">
       <div class="transaction-modal-header">
         <h2 id="tpsModalTitle">TPS Summary</h2>
-        <button id="closeTpsModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close TPS summary">Close</button>
+        <div class="flex items-center gap-2">
+          <button id="copyTpsModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Copy all rows">Copy</button>
+          <button id="closeTpsModalBtn" type="button" class="panel-action-btn h-7 px-2.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[11px] cursor-pointer" style="font-family: var(--font-mono);" aria-label="Close TPS summary">Close</button>
+        </div>
       </div>
       <div class="transaction-modal-table-wrap">
         <table id="tpsModalTable" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">

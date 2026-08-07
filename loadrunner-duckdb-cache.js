@@ -175,7 +175,7 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
   }
 }
 
-export async function queryTransactions(session, requestedStart, requestedEnd, limit = 500, offset = 0, namePrefix = "") {
+export async function queryTransactions(session, requestedStart, requestedEnd, limit = 0, offset = 0, namePrefix = "") {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
@@ -203,27 +203,42 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
       current.samples = current.success + current.fail;
       byName.set(name, current);
     }
-    const filtered = namePrefix ? [...byName.values()].filter((tx) => tx.name.startsWith(namePrefix)) : [...byName.values()];
+    const filtered = namePrefix ? [...byName.values()].filter((tx) => tx.name.toLowerCase().startsWith(namePrefix.toLowerCase())) : [...byName.values()];
     const all = filtered.sort((a, b) => a.name.localeCompare(b.name));
-    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 500));
     const safeOffset = Math.max(0, Number(offset) || 0);
+    const safeLimit = Number(limit) > 0 ? Number(limit) : all.length;
     return { start, end, total: all.length, rows: all.slice(safeOffset, safeOffset + safeLimit) };
   } finally {
     connection.closeSync();
   }
 }
 
-export async function queryTpsSummary(session, requestedStart, requestedEnd, requestedGranularity, limit = 500, offset = 0, namePrefix = "") {
+export async function queryTpsSummary(session, requestedStart, requestedEnd, requestedGranularity, limit = 0, offset = 0, namePrefix = "") {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const granularity = Math.max(1, Number(requestedGranularity) || 10);
-  const names = new Map(result.graphs.flatMap((graph) => graph.measurements.map((m) => [`${graph.type}:${m.id}`, m.name])));
+  const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
+  const candidates = (graph?.measurements ?? [])
+    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
+    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
+    .filter((m) => !/exc/i.test(m.name))
+    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+  const names = new Map(candidates.map((m) => [m.id, m.name]));
+  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
   const instance = await DuckDBInstance.fromCache(databasePath);
   const connection = await instance.connect();
   try {
+    const idListSql = candidates.map((m) => m.id).join(",");
+    // Every transaction's Avg/Min TPS must be measured against the SAME shared time base
+    // (total_buckets = how many 5s-ish intervals had ANY activity across this whole filtered
+    // group), not each transaction's own active-bucket count — otherwise infrequent transactions
+    // get an inflated per-transaction average (dividing by only their own sparse activity), and
+    // summing the Avg column across hundreds of transactions massively overshoots the real
+    // combined throughput. This mirrors how LoadRunner Analysis reports per-transaction TPS.
     const aggregates = await queryRows(connection, `
       WITH bucketed AS (
         SELECT measurement_id,
@@ -231,122 +246,34 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
           sum(value) AS bucket_total
         FROM rows
         WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+          AND measurement_id IN (${idListSql})
         GROUP BY measurement_id, bucket_index
+      ), total_buckets AS (
+        SELECT count(DISTINCT bucket_index) AS n FROM bucketed
       )
       SELECT measurement_id,
-        min(bucket_total / $granularity) AS min_tps,
-        avg(bucket_total / $granularity) AS avg_tps,
+        min(bucket_total / $granularity) AS min_tps_active,
+        sum(bucket_total) AS total,
         max(bucket_total / $granularity) AS max_tps,
-        count(*) AS points
+        count(*) AS points,
+        (SELECT n FROM total_buckets) AS total_buckets
       FROM bucketed
       GROUP BY measurement_id`, { start, end, granularity });
-    const rows = aggregates.map((item) => ({
-      name: names.get(`es_tr_tprange_pass:${item.measurement_id}`) ?? String(item.measurement_id),
-      minTps: item.min_tps,
-      avgTps: item.avg_tps,
-      maxTps: item.max_tps,
-      points: Number(item.points),
-    }));
-    const filtered = namePrefix ? rows.filter((tx) => tx.name.startsWith(namePrefix)) : rows;
-    const all = filtered.sort((a, b) => a.name.localeCompare(b.name));
-    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 500));
+    const rows = aggregates.map((item) => {
+      const totalBuckets = Math.max(1, Number(item.total_buckets));
+      const points = Number(item.points);
+      return {
+        name: names.get(item.measurement_id) ?? String(item.measurement_id),
+        minTps: points < totalBuckets ? 0 : item.min_tps_active,
+        avgTps: Number(item.total) / (totalBuckets * granularity),
+        maxTps: item.max_tps,
+        points,
+      };
+    });
+    const all = rows.sort((a, b) => a.name.localeCompare(b.name));
     const safeOffset = Math.max(0, Number(offset) || 0);
+    const safeLimit = Number(limit) > 0 ? Number(limit) : all.length;
     return { start, end, granularity, total: all.length, rows: all.slice(safeOffset, safeOffset + safeLimit) };
-  } finally {
-    connection.closeSync();
-  }
-}
-
-function scriptPrefix(name) {
-  return String(name ?? "").split("_").find((segment) => /^[A-Za-z]+\d+[A-Za-z]*$/.test(segment)) ?? null;
-}
-
-function groupNameByMeasurement(session) {
-  const groupByPrefix = new Map((session.result.scriptGroups ?? [])
-    .map((group) => [scriptPrefix(group.scriptName), group.groupName])
-    .filter(([prefix]) => prefix));
-  // TPS ("Transactions Per Second") is a business-transaction-level metric. RPS_-prefixed
-  // measurements are finer-grained per-API/per-request breakdowns of the SAME activity —
-  // summing them together with the real transaction counters would massively inflate the
-  // group total (double/triple counting one page load as many "transactions").
-  return new Map(session.result.graphs.flatMap((graph) => graph.measurements
-    .filter((measurement) => (graph.type === "es_tr_tprange_pass" || /fail/i.test(graph.type ?? "")) && !measurement.name.startsWith("RPS_"))
-    .map((measurement) => [`${graph.type}:${measurement.id}`, groupByPrefix.get(scriptPrefix(measurement.name)) ?? "-"])));
-}
-
-function rangeParams(session, requestedStart, requestedEnd, requestedGranularity) {
-  const duration = Number(session.result.scenario.durationSeconds) || 0;
-  const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
-  const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
-  return { start, end, granularity: Math.max(1, Number(requestedGranularity) || 10) };
-}
-
-export async function queryTpsSummaryByGroup(session, requestedStart, requestedEnd, requestedGranularity) {
-  const { start, end, granularity } = rangeParams(session, requestedStart, requestedEnd, requestedGranularity);
-  const groups = groupNameByMeasurement(session);
-  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
-  try {
-    const buckets = await queryRows(connection, `
-      SELECT measurement_id, floor((elapsed_seconds - $start) / $granularity) AS bucket_index,
-        sum(value) AS bucket_total
-      FROM rows
-      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
-      GROUP BY measurement_id, bucket_index`, { start, end, granularity });
-    const totals = new Map();
-    for (const bucket of buckets) {
-      const groupKey = `es_tr_tprange_pass:${bucket.measurement_id}`;
-      if (!groups.has(groupKey)) continue; // RPS_ (API/request-level) measurement, excluded from TPS
-      const key = `${groups.get(groupKey)}\u0000${bucket.bucket_index}`;
-      totals.set(key, (totals.get(key) ?? 0) + Number(bucket.bucket_total));
-    }
-    const values = new Map();
-    for (const [key, total] of totals) {
-      const groupName = key.split("\u0000", 1)[0];
-      const current = values.get(groupName) ?? [];
-      current.push(total / granularity);
-      values.set(groupName, current);
-    }
-    const rows = [...values.entries()].map(([groupName, tps]) => ({
-      groupName,
-      minTps: Math.min(...tps),
-      avgTps: tps.reduce((sum, value) => sum + value, 0) / tps.length,
-      maxTps: Math.max(...tps),
-      points: tps.length,
-    })).sort((a, b) => a.groupName.localeCompare(b.groupName));
-    return { start, end, granularity, total: rows.length, rows };
-  } finally {
-    connection.closeSync();
-  }
-}
-
-export async function queryTpsSummaryPassFailByGroup(session, requestedStart, requestedEnd, requestedGranularity) {
-  const summary = await queryTpsSummaryByGroup(session, requestedStart, requestedEnd, requestedGranularity);
-  const groups = groupNameByMeasurement(session);
-  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
-  try {
-    const counts = await queryRows(connection, `
-      SELECT graph_type, measurement_id, sum(value) AS total
-      FROM rows
-      WHERE elapsed_seconds BETWEEN $start AND $end
-        AND (graph_type = 'es_tr_tprange_pass' OR graph_type ILIKE '%fail%')
-      GROUP BY graph_type, measurement_id`, { start: summary.start, end: summary.end });
-    const totals = new Map(summary.rows.map((row) => [row.groupName, { ...row, pass: 0, fail: 0 }]));
-    for (const item of counts) {
-      const passFailKey = `${item.graph_type}:${item.measurement_id}`;
-      if (!groups.has(passFailKey)) continue; // RPS_ (API/request-level) measurement, excluded from TPS
-      const groupName = groups.get(passFailKey);
-      const current = totals.get(groupName) ?? { groupName, minTps: 0, avgTps: 0, maxTps: 0, points: 0, pass: 0, fail: 0 };
-      if (/fail/i.test(item.graph_type)) current.fail += Number(item.total);
-      else current.pass += Number(item.total);
-      totals.set(groupName, current);
-    }
-    const rows = [...totals.values()].map((row) => ({ ...row, total: row.pass + row.fail }))
-      .sort((a, b) => a.groupName.localeCompare(b.groupName));
-    return { ...summary, total: rows.length, rows };
   } finally {
     connection.closeSync();
   }
@@ -364,6 +291,9 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
   const granularity = Math.max(1, Math.ceil(Math.max(Number(requestedGranularity) || 1, (end - start) / MAX_POINTS_PER_SERIES)));
   const maxSeries = Math.max(1, Number(options.maxSeries) || DEFAULT_MAX_SERIES_PER_GRAPH);
   const namePrefix = options.namePrefix ?? "";
+  // Names the caller wants included regardless of volume ranking (e.g. picked via search in the
+  // chart's series selector, so it may fall outside the top-maxSeries-by-volume pool).
+  const extraNames = new Set(options.extraNames ?? []);
   const graph = result.graphs.find((g) => g.type === "es_tr_response_time");
   const candidates = (graph?.measurements ?? []).filter((m) => !namePrefix || m.name.startsWith(namePrefix));
   const names = new Map(candidates.map((m) => [m.id, m.name]));
@@ -382,9 +312,12 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
       GROUP BY measurement_id
       ORDER BY total_value DESC
       LIMIT ${maxSeries}`, { start, end });
-    if (!ranked.length) return { start, end, granularity, total: candidates.length, rows: [] };
+    const rankedIds = new Set(ranked.map((r) => r.measurement_id));
+    const extraIds = candidates.filter((m) => extraNames.has(m.name) && !rankedIds.has(m.id)).map((m) => m.id);
+    const selectedIds = [...ranked.map((r) => r.measurement_id), ...extraIds];
+    if (!selectedIds.length) return { start, end, granularity, total: candidates.length, rows: [] };
 
-    const selectedIdsSql = ranked.map((r) => r.measurement_id).join(",");
+    const selectedIdsSql = selectedIds.join(",");
     const rows = await queryRows(connection, `
       SELECT measurement_id,
         floor((elapsed_seconds - $start) / $granularity) * $granularity + $start AS elapsed_seconds,
@@ -402,6 +335,69 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
         name: names.get(row.measurement_id) ?? String(row.measurement_id),
         elapsedSeconds: row.elapsed_seconds,
         value: row.value,
+      })),
+    };
+  } finally {
+    connection.closeSync();
+  }
+}
+
+export async function queryTpsSeries(session, requestedStart, requestedEnd, requestedGranularity, options = {}) {
+  const { result } = session;
+  const duration = Number(result.scenario.durationSeconds) || 0;
+  const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
+  const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
+  const granularity = Math.max(1, Number(requestedGranularity) || 10);
+  const maxSeries = Math.max(1, Number(options.maxSeries) || DEFAULT_MAX_SERIES_PER_GRAPH);
+  const namePrefix = options.namePrefix ?? "";
+  // Names the caller wants included regardless of volume ranking (e.g. picked via search in the
+  // chart's series selector, so it may fall outside the top-maxSeries-by-volume pool).
+  const extraNames = new Set(options.extraNames ?? []);
+  const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
+  const candidates = (graph?.measurements ?? [])
+    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
+    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
+    .filter((m) => !/exc/i.test(m.name))
+    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+  const names = new Map(candidates.map((m) => [m.id, m.name]));
+  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+
+  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
+  const instance = await DuckDBInstance.fromCache(databasePath);
+  const connection = await instance.connect();
+  try {
+    const idListSql = candidates.map((m) => m.id).join(",");
+    const ranked = await queryRows(connection, `
+      SELECT measurement_id, sum(value) AS total_value
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${idListSql})
+      GROUP BY measurement_id
+      ORDER BY total_value DESC
+      LIMIT ${maxSeries}`, { start, end });
+    const rankedIds = new Set(ranked.map((r) => r.measurement_id));
+    const extraIds = candidates.filter((m) => extraNames.has(m.name) && !rankedIds.has(m.id)).map((m) => m.id);
+    const selectedIds = [...ranked.map((r) => r.measurement_id), ...extraIds];
+    if (!selectedIds.length) return { start, end, granularity, total: candidates.length, rows: [] };
+
+    const selectedIdsSql = selectedIds.join(",");
+    const rows = await queryRows(connection, `
+      SELECT measurement_id,
+        floor((elapsed_seconds - $start) / $granularity) * $granularity + $start AS bucket_start,
+        sum(value) AS bucket_total
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${selectedIdsSql})
+      GROUP BY measurement_id, bucket_start
+      ORDER BY measurement_id, bucket_start`, { start, end, granularity });
+
+    return {
+      start, end, granularity, total: candidates.length,
+      rows: rows.map((row) => ({
+        measurementId: row.measurement_id,
+        name: names.get(row.measurement_id) ?? String(row.measurement_id),
+        elapsedSeconds: row.bucket_start,
+        value: row.bucket_total / granularity,
       })),
     };
   } finally {
