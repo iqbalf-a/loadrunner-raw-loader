@@ -22,8 +22,20 @@ Dashboard tersedia di `http://127.0.0.1:8787`. Ada dua cara memuat result:
 D:\transfer-kantor\RawResults_12
 ```
 
-Di mode dev kedua-duanya aktif. Untuk deployment ke server bersama, lihat
-[Menjalankan di server](#menjalankan-di-server-dipakai-banyak-orang).
+Di mode dev kedua-duanya aktif. `npm run dev` hanya mendengar di `127.0.0.1`; untuk membukanya ke
+jaringan (device lain mengakses lewat IP laptop) pakai:
+
+```powershell
+npm run dev:lan
+```
+
+Vite akan mencetak baris *Network* berisi alamat yang dipakai device lain, misalnya
+`http://10.113.55.189:8787/`.
+
+> **Perhatian:** di mode dev, kolom *Raw result path* aktif tanpa batasan folder, jadi siapa pun
+> yang bisa menjangkau port itu bisa menyuruh server membaca folder mana saja di laptop kamu.
+> Untuk dipakai bersama, jalankan mode produksi (`npm start`) yang membatasi path lewat
+> `LR_RESULTS_ROOT` — lihat [Menjalankan di server](#menjalankan-di-server-dipakai-banyak-orang).
 
 ## Fitur dashboard
 
