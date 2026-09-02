@@ -3,6 +3,7 @@ dist/
 *.log
 loadrunner-summary.json
 /.loadrunner-cache/
+/.loadrunner-uploads/
 
 # Hermes/Claude local session state
 .hermes/

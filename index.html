@@ -43,8 +43,22 @@
       <!-- ── Toolbar ── -->
       <header id="toolbar" class="sticky top-0 z-5 border-b border-(--line) bg-(--surface) px-5 py-2.5">
         <div class="flex flex-wrap items-end gap-2.5">
+          <div id="uploadRow" class="flex-1 min-w-80">
+            <label class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Raw result ZIP</label>
+            <div id="dropzone" class="flex items-center gap-2.5 h-7.5 px-2.25 border border-dashed border-(--line) rounded-[3px] bg-(--surface-raised) text-[12px] cursor-pointer" style="font-family: var(--font-mono);">
+              <span id="dropzoneLabel" class="truncate text-(--chart-text)">Drop file ZIP di sini atau klik untuk memilih</span>
+            </div>
+            <input id="zipInput" type="file" accept=".zip,application/zip" hidden>
+            <div id="uploadProgressWrap" hidden class="mt-1 h-1 w-full rounded-[2px] bg-(--surface-raised) border border-(--line) overflow-hidden">
+              <div id="uploadProgressBar" class="h-full w-0 bg-(--signal)"></div>
+            </div>
+          </div>
+          <button id="uploadBtn" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold tracking-[0.01em] cursor-pointer">Upload &amp; Load</button>
+        </div>
+
+        <div id="pathRow" hidden class="flex flex-wrap items-end gap-2.5 mt-2">
           <div class="flex-1 min-w-80">
-            <label for="resultPath" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Raw result path</label>
+            <label for="resultPath" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Raw result path (server)</label>
             <input
               id="resultPath"
               placeholder="C:\path\to\RawResults_XX"

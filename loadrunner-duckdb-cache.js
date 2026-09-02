@@ -7,7 +7,9 @@ import { createReadStream } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { loadLoadRunnerResult } from "./loadrunner-raw-loader.js";
 
-const CACHE_DIR = path.resolve(".loadrunner-cache");
+const CACHE_DIR = path.resolve(process.env.LR_CACHE_DIR || ".loadrunner-cache");
+
+export { CACHE_DIR };
 const MAX_POINTS_PER_SERIES = 600;
 const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
 const SITESCOPE_METRIC_PATTERN = /\/CPU\/utilization$|\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
@@ -87,22 +89,44 @@ function publicResult(result) {
   };
 }
 
-export async function openLoadRunnerCache(resultDir) {
+export function cachePaths(key) {
+  return {
+    databasePath: path.join(CACHE_DIR, `${key}.duckdb`),
+    metadataPath: path.join(CACHE_DIR, `${key}.json`),
+  };
+}
+
+export async function readCacheMetadata(key) {
+  const { databasePath, metadataPath } = cachePaths(key);
+  if (!existsSync(databasePath) || !existsSync(metadataPath)) return null;
+  try {
+    return JSON.parse(await readFile(metadataPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// overrides = { key, fingerprint, label }. Dipakai jalur upload: identitas cache berasal
+// dari isi ZIP (sha256), bukan dari path folder, supaya folder ekstraksi boleh dihapus
+// setelah ingest dan re-upload ZIP identik langsung memakai ulang .duckdb yang ada.
+export async function openLoadRunnerCache(resultDir, overrides = {}) {
   const resolvedResultDir = path.resolve(resultDir);
-  const key = cacheKey(resolvedResultDir);
-  const databasePath = path.join(CACHE_DIR, `${key}.duckdb`);
-  const metadataPath = path.join(CACHE_DIR, `${key}.json`);
-  const currentFingerprint = await fingerprint(resolvedResultDir);
+  const byContent = typeof overrides.key === "string" && overrides.key.length > 0;
+  const key = byContent ? overrides.key : cacheKey(resolvedResultDir);
+  const label = overrides.label ?? null;
+  const { databasePath, metadataPath } = cachePaths(key);
+  const currentFingerprint = byContent ? overrides.fingerprint ?? key : await fingerprint(resolvedResultDir);
   await mkdir(CACHE_DIR, { recursive: true });
 
   if (existsSync(databasePath) && existsSync(metadataPath)) {
     const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-    if (metadata.fingerprint === currentFingerprint && metadata.result.resultDir === resolvedResultDir) return metadata;
+    const sameSource = byContent || metadata.result.resultDir === resolvedResultDir;
+    if (metadata.fingerprint === currentFingerprint && sameSource) return metadata;
   }
 
   // Reuse the established metadata parser, but avoid retaining every graph point in JS.
   const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false });
-  const result = publicResult(parsed);
+  const result = { ...publicResult(parsed), label };
   const instance = await DuckDBInstance.fromCache(databasePath);
   const connection = await instance.connect();
   try {

@@ -4,7 +4,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "summary": "node ./loadrunner-raw-loader.js"
+    "summary": "node ./loadrunner-raw-loader.js",
+    "start": "node ./server.js"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -12,6 +13,7 @@
     "vite": "^7.2.7"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.5-r.2"
+    "@duckdb/node-api": "^1.5.5-r.2",
+    "yauzl": "^3.4.0"
   }
 }

@@ -15,6 +15,13 @@ const chartAllSeries = {};
 
 const els = {
   resultPath: document.getElementById("resultPath"),
+  pathRow: document.getElementById("pathRow"),
+  uploadBtn: document.getElementById("uploadBtn"),
+  zipInput: document.getElementById("zipInput"),
+  dropzone: document.getElementById("dropzone"),
+  dropzoneLabel: document.getElementById("dropzoneLabel"),
+  uploadProgressWrap: document.getElementById("uploadProgressWrap"),
+  uploadProgressBar: document.getElementById("uploadProgressBar"),
   startTime: document.getElementById("startTime"),
   endTime: document.getElementById("endTime"),
   tpsGranularity: document.getElementById("tpsGranularity"),
@@ -217,7 +224,7 @@ function renderAll() {
   renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
   renderTpsSummaryPanels();
   renderCharts(transactions, start, end);
-  els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
+  els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.label || state.data.result.resultDir}`;
 }
 
 async function withLoadTimer(loadingLabel, task) {
@@ -285,6 +292,120 @@ async function resetTpsGranularity() {
   });
 }
 
+async function applySessionPayload(payload) {
+  state.data = payload;
+  const duration = payload.result.scenario.durationSeconds || 300;
+  els.startTime.value = "00:00:00";
+  els.endTime.value = formatHms(duration);
+  state.appliedStart = 0;
+  state.appliedEnd = duration;
+  state.appliedTpsGranularity = parsePositiveSeconds(els.tpsGranularity.value) || DEFAULT_GRAPH_GRANULARITY_SECONDS;
+  await refreshDashboardData();
+  renderAll();
+}
+
+// Result aktif disimpan per browser di server (cookie client id), jadi tab baru di browser
+// yang sama langsung mendapat result yang sama tanpa upload ulang.
+async function fetchActiveSession() {
+  const response = await fetch("/api/session");
+  if (response.status === 204) return null;
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Gagal membaca session aktif.");
+  return payload;
+}
+
+// fetch() tidak punya progress upload, jadi jalur ini memakai XHR.
+function uploadZip(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/upload?name=${encodeURIComponent(file.name)}`);
+    request.setRequestHeader("Content-Type", "application/zip");
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    });
+    request.addEventListener("load", () => {
+      let payload = {};
+      try { payload = JSON.parse(request.responseText); } catch { /* biarkan pesan default */ }
+      if (request.status >= 200 && request.status < 300) resolve(payload);
+      else reject(new Error(payload.error || `Upload gagal (HTTP ${request.status}).`));
+    });
+    request.addEventListener("error", () => reject(new Error("Koneksi ke server terputus saat upload.")));
+    request.addEventListener("abort", () => reject(new Error("Upload dibatalkan.")));
+    request.send(file);
+  });
+}
+
+const INGEST_STAGE_LABEL = {
+  queued: "Antre di server",
+  extracting: "Mengekstrak ZIP",
+  ingesting: "Memuat ke DuckDB",
+};
+
+async function waitForIngest(jobId, startedAt) {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const response = await fetch(`/api/upload-status?job=${encodeURIComponent(jobId)}`);
+    const job = await response.json();
+    if (!response.ok) throw new Error(job.error || "Gagal membaca status ingest.");
+    if (job.status === "error") throw new Error(job.error || "Ingest gagal.");
+    if (job.status === "done") return job.session;
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    els.status.textContent = `${INGEST_STAGE_LABEL[job.stage] ?? job.stage}... ${elapsed}s`;
+  }
+}
+
+let selectedZipFile = null;
+
+function selectZipFile(file) {
+  selectedZipFile = file;
+  const megabytes = (file.size / 1024 / 1024).toFixed(1);
+  els.dropzoneLabel.textContent = `${file.name} (${megabytes} MB)`;
+  els.dropzoneLabel.classList.remove("text-(--chart-text)");
+  uploadResult(file);
+}
+
+async function uploadResult(file) {
+  if (!file) {
+    els.status.textContent = "Pilih file ZIP raw result dulu.";
+    els.status.className = STATUS_ERR;
+    return;
+  }
+  if (!/\.zip$/i.test(file.name)) {
+    els.status.textContent = "File harus berupa ZIP raw result LoadRunner.";
+    els.status.className = STATUS_ERR;
+    return;
+  }
+
+  els.uploadBtn.disabled = true;
+  els.loadBtn.disabled = true;
+  els.status.className = STATUS_BASE;
+  els.uploadProgressWrap.hidden = false;
+  els.uploadProgressBar.style.width = "0%";
+  const startedAt = Date.now();
+
+  try {
+    const response = await uploadZip(file, (ratio) => {
+      els.uploadProgressBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+      els.status.textContent = `Uploading ${file.name}... ${(ratio * 100).toFixed(0)}%`;
+    });
+    els.uploadProgressBar.style.width = "100%";
+    if (!response.session) await waitForIngest(response.job, startedAt);
+
+    const payload = await fetchActiveSession();
+    if (!payload) throw new Error("Result tidak ditemukan setelah ingest.");
+    await applySessionPayload(payload);
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
+    els.status.textContent += ` | ${response.cached ? "Reused cache" : "Ingested"} in ${elapsed}s`;
+  } catch (error) {
+    els.status.textContent = error.message;
+    els.status.className = STATUS_ERR;
+  } finally {
+    els.uploadProgressWrap.hidden = true;
+    els.uploadBtn.disabled = false;
+    els.loadBtn.disabled = false;
+  }
+}
+
 async function loadResult() {
   const resultPath = els.resultPath.value.trim();
   if (!resultPath) {
@@ -306,16 +427,8 @@ async function loadResult() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Load failed");
     localStorage.setItem("loadrunnerLastPath", resultPath);
-    state.data = payload;
-    const duration = payload.result.scenario.durationSeconds || 300;
-    els.startTime.value = "00:00:00";
-    els.endTime.value = formatHms(duration);
-    state.appliedStart = 0;
-    state.appliedEnd = duration;
-    state.appliedTpsGranularity = parsePositiveSeconds(els.tpsGranularity.value) || DEFAULT_GRAPH_GRANULARITY_SECONDS;
-    await refreshDashboardData();
+    await applySessionPayload(payload);
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
-    renderAll();
     els.status.textContent += ` | Loaded in ${elapsed}s`;
   } catch (error) {
     els.status.textContent = error.message;
@@ -528,6 +641,23 @@ function initSortableTables() {
 
 els.loadBtn.addEventListener("click", loadResult);
 els.resultPath.addEventListener("keydown", (e) => { if (e.key === "Enter") loadResult(); });
+els.dropzone.addEventListener("click", () => els.zipInput.click());
+els.dropzone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  els.dropzone.classList.add("border-(--signal)");
+});
+els.dropzone.addEventListener("dragleave", () => els.dropzone.classList.remove("border-(--signal)"));
+els.dropzone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  els.dropzone.classList.remove("border-(--signal)");
+  const file = event.dataTransfer?.files?.[0];
+  if (file) selectZipFile(file);
+});
+els.zipInput.addEventListener("change", () => {
+  const file = els.zipInput.files?.[0];
+  if (file) selectZipFile(file);
+});
+els.uploadBtn.addEventListener("click", () => uploadResult(selectedZipFile));
 els.themeToggle.addEventListener("click", toggleTheme);
 els.applyTpsGranularityBtn.addEventListener("click", applyTpsGranularity);
 els.resetTpsGranularityBtn.addEventListener("click", resetTpsGranularity);
@@ -608,6 +738,44 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   }
 });
 
+// Tab lain di browser yang sama bisa memuat result berbeda; saat tab ini kembali aktif,
+// ikuti result yang sedang aktif di server.
+window.addEventListener("focus", async () => {
+  if (els.uploadBtn.disabled) return;
+  try {
+    const payload = await fetchActiveSession();
+    if (payload && payload.session !== state.data?.session) await applySessionPayload(payload);
+  } catch {
+    // Diamkan: ini refresh latar belakang, bukan aksi user.
+  }
+});
+
+async function bootstrapSession() {
+  try {
+    const response = await fetch("/api/config");
+    if (response.ok) {
+      const config = await response.json();
+      els.pathRow.hidden = !config.pathMode;
+    }
+  } catch {
+    // Konfigurasi opsional; mode path tetap tersembunyi kalau gagal.
+  }
+
+  try {
+    const payload = await fetchActiveSession();
+    if (!payload) {
+      els.status.textContent = "Upload ZIP raw result untuk mulai.";
+      return;
+    }
+    await withLoadTimer("Restoring session", async () => {
+      await applySessionPayload(payload);
+    });
+  } catch (error) {
+    els.status.textContent = error.message;
+    els.status.className = STATUS_ERR;
+  }
+}
+
 setupChartPanelActions();
 applyTheme(localStorage.getItem("loadrunnerTheme") === "dark" ? "dark" : "light");
 els.resultPath.value = localStorage.getItem("loadrunnerLastPath") || "";
@@ -616,3 +784,4 @@ new ResizeObserver(syncToolbarHeight).observe(document.getElementById("toolbar")
 initSortableTables();
 updateSortIndicators();
 initScrollspy();
+bootstrapSession();

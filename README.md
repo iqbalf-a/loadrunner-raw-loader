@@ -13,11 +13,17 @@ npm install
 npm run dev
 ```
 
-Dashboard tersedia di `http://127.0.0.1:8787`. Isi path raw result, contoh:
+Dashboard tersedia di `http://127.0.0.1:8787`. Ada dua cara memuat result:
+
+- **Upload ZIP** — drop file ZIP raw result (hasil download dari LoadRunner) ke kotak di toolbar.
+- **Raw result path** — isi path folder result di mesin yang menjalankan server, contoh:
 
 ```
 D:\transfer-kantor\RawResults_12
 ```
+
+Di mode dev kedua-duanya aktif. Untuk deployment ke server bersama, lihat
+[Menjalankan di server](#menjalankan-di-server-dipakai-banyak-orang).
 
 ## Fitur dashboard
 
@@ -85,4 +91,65 @@ node .\loadrunner-raw-loader.js "D:\transfer-kantor\RawResults_12" --json --out 
 npm run build
 ```
 
-Output di folder `dist/`. Sajikan dengan `vite preview` atau server statis lain.
+Output di folder `dist/`, disajikan oleh `node server.js`.
+
+## Menjalankan di server (dipakai banyak orang)
+
+Aplikasi bisa dijalankan di satu server; user membuka lewat browser dari device masing-masing
+dan meng-upload file ZIP raw result (bentuk asli hasil download dari LoadRunner). Parsing dan
+DuckDB seluruhnya berjalan di server — device user hanya butuh browser.
+
+```powershell
+npm install
+npm run build
+$env:PORT = "8787"
+npm start
+```
+
+Server offline (tanpa internet): jalankan `npm install` di mesin yang punya internet dengan
+Windows/arsitektur yang sama, lalu salin folder `node_modules` apa adanya ke server bersama
+source code.
+
+### Environment variable
+
+| Variable | Default | Keterangan |
+|---|---|---|
+| `HOST` | `0.0.0.0` | Alamat listen. Isi `127.0.0.1` untuk membatasi ke lokal saja |
+| `PORT` | `8787` | Port HTTP |
+| `LR_CACHE_DIR` | `.loadrunner-cache` | Lokasi cache DuckDB dan daftar session per browser |
+| `LR_UPLOAD_DIR` | `.loadrunner-uploads` | Folder sementara upload dan hasil ekstraksi |
+| `LR_RESULTS_ROOT` | *(kosong)* | Kalau diisi, mode "Raw result path" aktif dan path wajib berada di dalam folder ini. Kalau kosong, mode path dimatikan dan hanya upload yang tersedia |
+| `LR_MAX_UPLOAD_BYTES` | `4294967296` (4 GB) | Batas ukuran ZIP yang diterima |
+| `LR_MAX_EXTRACT_BYTES` | `17179869184` (16 GB) | Batas total byte hasil ekstraksi |
+| `LR_INGEST_CONCURRENCY` | `1` | Jumlah ingest yang boleh berjalan bersamaan |
+| `LR_KEEP_EXTRACTED` | `0` | Isi `1` untuk menyimpan file mentah hasil ekstraksi (debug) |
+
+Jangan lupa membuka port di Windows Firewall:
+
+```powershell
+New-NetFirewallRule -DisplayName "LoadRunner Dashboard" -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow
+```
+
+### Cara kerja upload
+
+1. Browser mengirim ZIP ke `/api/upload` (dengan progress bar).
+2. Server mengekstrak **hanya** file yang dibaca parser (lihat tabel *File yang dibaca*) — log
+   mdrv, folder host, script, dan `output.mdb` dilewati.
+3. Ingest berjalan di worker thread terpisah, satu antrean per result, jadi upload besar tidak
+   membekukan dashboard user lain.
+4. Setelah masuk DuckDB, file mentah dan ZIP-nya dihapus; query berjalan dari
+   `.loadrunner-cache\<key>.duckdb`.
+
+Identitas cache diambil dari sha256 isi ZIP. Meng-upload ulang ZIP yang sama — termasuk oleh
+orang lain — langsung memakai ulang cache tanpa parsing ulang.
+
+### Session per browser
+
+Satu browser di satu device = satu workspace, ditandai cookie `lr_client`:
+
+- Semua tab pada browser yang sama melihat result yang sama; tab baru otomatis terisi.
+- Result browser lain tidak bisa dibuka, walau session key-nya diketahui.
+- Untuk membuka dua result sekaligus, pakai browser atau device yang berbeda.
+
+> **Catatan:** ini isolasi, bukan autentikasi. Siapa pun yang bisa menjangkau port tersebut tetap
+> bisa membuka aplikasi dan meng-upload result miliknya sendiri.
