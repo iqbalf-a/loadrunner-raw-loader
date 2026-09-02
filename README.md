@@ -110,6 +110,34 @@ Server offline (tanpa internet): jalankan `npm install` di mesin yang punya inte
 Windows/arsitektur yang sama, lalu salin folder `node_modules` apa adanya ke server bersama
 source code.
 
+### Jalan dari laptop sendiri, diakses device lain
+
+Tidak harus di server khusus — laptop biasa sudah cukup, selama semua device berada di jaringan
+yang sama.
+
+```powershell
+npm run build
+$env:HOST = "0.0.0.0"
+$env:PORT = "8787"
+$env:LR_RESULTS_ROOT = "C:\Users\<user>\Downloads"   # opsional, supaya mode path lokal tetap aktif
+npm start
+```
+
+Cari alamat laptop dengan `ipconfig` (baris *IPv4 Address*), lalu buka dari device lain:
+`http://<ip-laptop>:8787`.
+
+Saat pertama kali `npm start`, Windows menampilkan dialog *Allow Node.js to communicate on these
+networks* — centang **Private** lalu Allow. Kalau dialognya tidak muncul, buka port secara manual
+dari PowerShell **as Administrator** (lihat perintah di bawah).
+
+Yang perlu diingat pada skema ini:
+
+- IP laptop berasal dari DHCP, jadi bisa berubah setelah pindah jaringan atau reconnect.
+- Laptop harus menyala dan tidak sleep; begitu sleep, semua sesi yang terbuka putus.
+- Upload dari device lain memakai disk laptop kamu (`.loadrunner-cache\<key>.duckdb` menetap).
+- Sebagian Wi-Fi kantor/tamu memblokir komunikasi antar-client (AP isolation). Kalau firewall
+  sudah dibuka tapi tetap tidak bisa diakses, itu penyebab paling umum.
+
 ### Environment variable
 
 | Variable | Default | Keterangan |
@@ -124,10 +152,10 @@ source code.
 | `LR_INGEST_CONCURRENCY` | `1` | Jumlah ingest yang boleh berjalan bersamaan |
 | `LR_KEEP_EXTRACTED` | `0` | Isi `1` untuk menyimpan file mentah hasil ekstraksi (debug) |
 
-Jangan lupa membuka port di Windows Firewall:
+Jangan lupa membuka port di Windows Firewall (PowerShell **as Administrator**):
 
 ```powershell
-New-NetFirewallRule -DisplayName "LoadRunner Dashboard" -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow
+New-NetFirewallRule -DisplayName "LoadRunner Dashboard" -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow -Profile Private
 ```
 
 ### Cara kerja upload
