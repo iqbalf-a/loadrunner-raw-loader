@@ -41,7 +41,7 @@ export function percentile(values, rank) {
 }
 
 export function fmtNumber(value) {
-  return Number.isFinite(value) ? Math.round(value).toLocaleString("id-ID") : "0";
+  return Number.isFinite(value) ? String(Math.round(value)) : "0";
 }
 
 export function fmtSeconds(seconds) {
