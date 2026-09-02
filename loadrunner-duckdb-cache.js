@@ -46,13 +46,47 @@ async function fingerprint(resultDir) {
 // DuckDB default-nya memakai sampai 80% RAM mesin. Di server kecil itu menyisakan terlalu
 // sedikit memori untuk heap V8, sehingga proses ingest mati dengan "Committing semi space
 // failed". Batasnya dibuat eksplisit dan bisa diatur lewat env.
+function duckdbConfig(extra = {}) {
+  const config = {
+    memory_limit: DUCKDB_MEMORY_LIMIT,
+    temp_directory: `${CACHE_DIR.replaceAll("\\", "/")}/tmp`,
+    ...extra,
+  };
+  if (DUCKDB_THREADS) config.threads = String(DUCKDB_THREADS);
+  return config;
+}
+
+function describeLockError(error, databasePath) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/being used by another process|already open/i.test(message)) return error;
+  return new Error(
+    `File cache ${path.basename(databasePath)} sedang dipegang proses Node lain. `
+    + "Pastikan hanya satu instance aplikasi yang jalan (npm run dev ATAU npm start), "
+    + `lalu ulangi. Detail: ${message}`,
+  );
+}
+
+// Query dibuka read-only supaya beberapa proses (dan beberapa request) bisa membaca file
+// cache yang sama bersamaan; hanya ingest yang butuh akses tulis eksklusif.
 async function openConnection(databasePath) {
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
-  await connection.run(`SET memory_limit='${DUCKDB_MEMORY_LIMIT}'`);
-  if (DUCKDB_THREADS) await connection.run(`SET threads=${DUCKDB_THREADS}`);
-  await connection.run(`SET temp_directory='${CACHE_DIR.replaceAll("\\", "/")}/tmp'`);
-  return connection;
+  try {
+    const instance = await DuckDBInstance.fromCache(databasePath, duckdbConfig({ access_mode: "READ_ONLY" }));
+    return await instance.connect();
+  } catch (error) {
+    throw describeLockError(error, databasePath);
+  }
+}
+
+// Instance tulis sengaja tidak di-cache: begitu ingest selesai, instance-nya ditutup supaya
+// lock filenya dilepas dan proses lain bisa membaca cache tersebut.
+async function openWritableDatabase(databasePath) {
+  try {
+    const instance = await DuckDBInstance.create(databasePath, duckdbConfig());
+    const connection = await instance.connect();
+    return { instance, connection };
+  } catch (error) {
+    throw describeLockError(error, databasePath);
+  }
 }
 
 async function queryRows(connection, sql, values = {}) {
@@ -141,7 +175,7 @@ export async function openLoadRunnerCache(resultDir, overrides = {}) {
   // Reuse the established metadata parser, but avoid retaining every graph point in JS.
   const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false, includeOffline: false });
   const result = { ...publicResult(parsed), label };
-  const connection = await openConnection(databasePath);
+  const { instance, connection } = await openWritableDatabase(databasePath);
   try {
     await connection.run("DROP TABLE IF EXISTS rows");
     await connection.run(`CREATE TABLE rows (
@@ -158,6 +192,7 @@ export async function openLoadRunnerCache(resultDir, overrides = {}) {
     return metadata;
   } finally {
     connection.closeSync();
+    instance.closeSync();
   }
 }
 

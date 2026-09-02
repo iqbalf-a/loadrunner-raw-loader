@@ -167,6 +167,20 @@ Yang perlu diingat pada skema ini:
 | `LR_DUCKDB_THREADS` | *(default DuckDB)* | Batasi jumlah thread DuckDB di server kecil, misal `2` |
 | `LR_WORKER_MAX_OLD_MB` | *(default Node)* | Batas heap worker ingest dalam MB |
 
+### Kalau muncul "File is already open in node.exe (PID ...)"
+
+DuckDB hanya mengizinkan satu proses membuka file cache untuk **menulis**. Error ini berarti ada
+proses Node lain yang masih memegang file tersebut — biasanya `npm run dev` yang belum ditutup di
+terminal lain, atau `npm start` sebelumnya yang masih jalan.
+
+```powershell
+Get-Process node | Select-Object Id, Path, StartTime      # cari prosesnya
+Stop-Process -Id <PID>                                     # hentikan yang tidak terpakai
+```
+
+Query dashboard sendiri dibuka read-only, jadi beberapa instance boleh membaca cache yang sama
+bersamaan; yang eksklusif hanya proses ingest, dan lock-nya dilepas begitu ingest selesai.
+
 ### Kalau ingest gagal dengan "JavaScript heap out of memory"
 
 Error `FATAL ERROR: ... Committing semi space failed` berarti mesin kehabisan memori yang bisa
