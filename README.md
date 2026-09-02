@@ -163,6 +163,26 @@ Yang perlu diingat pada skema ini:
 | `LR_MAX_EXTRACT_BYTES` | `17179869184` (16 GB) | Batas total byte hasil ekstraksi |
 | `LR_INGEST_CONCURRENCY` | `1` | Jumlah ingest yang boleh berjalan bersamaan |
 | `LR_KEEP_EXTRACTED` | `0` | Isi `1` untuk menyimpan file mentah hasil ekstraksi (debug) |
+| `LR_DUCKDB_MEMORY_LIMIT` | `1GB` | Batas memori DuckDB. Tanpa ini DuckDB memakai sampai 80% RAM mesin |
+| `LR_DUCKDB_THREADS` | *(default DuckDB)* | Batasi jumlah thread DuckDB di server kecil, misal `2` |
+| `LR_WORKER_MAX_OLD_MB` | *(default Node)* | Batas heap worker ingest dalam MB |
+
+### Kalau ingest gagal dengan "JavaScript heap out of memory"
+
+Error `FATAL ERROR: ... Committing semi space failed` berarti mesin kehabisan memori yang bisa
+di-commit, bukan berarti result-nya rusak. Urutan penanganan:
+
+1. Turunkan porsi DuckDB: `$env:LR_DUCKDB_MEMORY_LIMIT = "512MB"` dan `$env:LR_DUCKDB_THREADS = "2"`.
+2. Pastikan hanya satu ingest berjalan (`LR_INGEST_CONCURRENCY=1`, sudah default).
+3. Kalau RAM server memang kecil, perbesar pagefile Windows — ingest result 1,4 GB memuncak di
+   sekitar 550 MB RSS.
+
+Sebagai referensi di mesin dev (Node 22, Windows x64):
+
+| Result | Ukuran folder | Waktu ingest | Peak RSS |
+|---|---|---|---|
+| `RawResults_16` | 523 MB | 22 detik | 286 MB |
+| `RawResults_49` | 1407 MB | 57 detik | 542 MB |
 
 Jangan lupa membuka port di Windows Firewall (PowerShell **as Administrator**):
 

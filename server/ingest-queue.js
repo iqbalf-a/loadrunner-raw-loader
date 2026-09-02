@@ -6,6 +6,7 @@ import { Worker } from "node:worker_threads";
 const WORKER_PATH = fileURLToPath(new URL("./ingest-worker.js", import.meta.url));
 const MAX_CONCURRENT = Math.max(1, Number(process.env.LR_INGEST_CONCURRENCY) || 1);
 const JOB_TTL_MS = 30 * 60 * 1000;
+const WORKER_MAX_OLD_MB = Number(process.env.LR_WORKER_MAX_OLD_MB) || 0;
 
 const jobs = new Map();
 const jobByKey = new Map();
@@ -50,6 +51,9 @@ function pump() {
     job.stage = "extracting";
 
     const worker = new Worker(WORKER_PATH, {
+      // Di mesin dengan RAM terbatas, batas heap worker bisa dikecilkan lewat env supaya V8
+      // tidak mencoba memesan memori yang tidak tersedia.
+      ...(WORKER_MAX_OLD_MB ? { resourceLimits: { maxOldGenerationSizeMb: WORKER_MAX_OLD_MB } } : {}),
       workerData: {
         zipPath: job.zipPath,
         extractDir: job.extractDir,

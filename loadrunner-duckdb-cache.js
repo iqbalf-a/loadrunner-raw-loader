@@ -10,6 +10,8 @@ import { loadLoadRunnerResult } from "./loadrunner-raw-loader.js";
 const CACHE_DIR = path.resolve(process.env.LR_CACHE_DIR || ".loadrunner-cache");
 
 export { CACHE_DIR };
+const DUCKDB_MEMORY_LIMIT = process.env.LR_DUCKDB_MEMORY_LIMIT || "1GB";
+const DUCKDB_THREADS = Number(process.env.LR_DUCKDB_THREADS) || 0;
 const MAX_POINTS_PER_SERIES = 600;
 const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
 const SITESCOPE_METRIC_PATTERN = /\/CPU\/utilization$|\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
@@ -39,6 +41,18 @@ async function fingerprint(resultDir) {
     }
   }));
   return createHash("sha256").update(parts.sort().join("\n")).digest("hex");
+}
+
+// DuckDB default-nya memakai sampai 80% RAM mesin. Di server kecil itu menyisakan terlalu
+// sedikit memori untuk heap V8, sehingga proses ingest mati dengan "Committing semi space
+// failed". Batasnya dibuat eksplisit dan bisa diatur lewat env.
+async function openConnection(databasePath) {
+  const instance = await DuckDBInstance.fromCache(databasePath);
+  const connection = await instance.connect();
+  await connection.run(`SET memory_limit='${DUCKDB_MEMORY_LIMIT}'`);
+  if (DUCKDB_THREADS) await connection.run(`SET threads=${DUCKDB_THREADS}`);
+  await connection.run(`SET temp_directory='${CACHE_DIR.replaceAll("\\", "/")}/tmp'`);
+  return connection;
 }
 
 async function queryRows(connection, sql, values = {}) {
@@ -125,10 +139,9 @@ export async function openLoadRunnerCache(resultDir, overrides = {}) {
   }
 
   // Reuse the established metadata parser, but avoid retaining every graph point in JS.
-  const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false });
+  const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false, includeOffline: false });
   const result = { ...publicResult(parsed), label };
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     await connection.run("DROP TABLE IF EXISTS rows");
     await connection.run(`CREATE TABLE rows (
@@ -158,8 +171,7 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
   const focusGraphType = options.focusGraphType ?? "";
   const focusMeasurementId = Number.isFinite(options.focusMeasurementId) ? options.focusMeasurementId : -1;
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const seriesCounts = await queryRows(connection, `
       SELECT graph_type, count(*) AS total
@@ -206,8 +218,7 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const names = new Map(result.graphs.flatMap((graph) => graph.measurements.map((m) => [`${graph.type}:${m.id}`, m.name])));
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const aggregates = await queryRows(connection, `
       SELECT graph_type, measurement_id, min(value) AS min, avg(value) AS avg,
@@ -253,8 +264,7 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     // Every transaction's Avg/Min TPS must be measured against the SAME shared time base
@@ -324,8 +334,7 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     const ranked = await queryRows(connection, `
@@ -387,8 +396,7 @@ export async function queryTpsSeries(session, requestedStart, requestedEnd, requ
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     const ranked = await queryRows(connection, `
