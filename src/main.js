@@ -17,6 +17,7 @@ const els = {
   resultPath: document.getElementById("resultPath"),
   pathRow: document.getElementById("pathRow"),
   uploadBtn: document.getElementById("uploadBtn"),
+  resetSessionBtn: document.getElementById("resetSessionBtn"),
   zipInput: document.getElementById("zipInput"),
   dropzone: document.getElementById("dropzone"),
   dropzoneLabel: document.getElementById("dropzoneLabel"),
@@ -354,6 +355,27 @@ async function waitForIngest(jobId, startedAt) {
   }
 }
 
+// Result menempel pada browser sampai dilepas, jadi tab yang dibuka besok pun masih menampilkan
+// result kemarin. Tombol Reset melepas result itu lalu memuat ulang halaman ke keadaan kosong,
+// supaya jelas bahwa angka yang muncul berikutnya benar-benar dari file yang baru di-upload.
+async function resetSession() {
+  els.resetSessionBtn.disabled = true;
+  els.status.className = STATUS_BASE;
+  els.status.textContent = "Menutup result...";
+  try {
+    const response = await fetch("/api/session", { method: "DELETE" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "Reset gagal.");
+    }
+    location.reload();
+  } catch (error) {
+    els.status.textContent = error.message;
+    els.status.className = STATUS_ERR;
+    els.resetSessionBtn.disabled = false;
+  }
+}
+
 let selectedZipFile = null;
 
 function selectZipFile(file) {
@@ -658,6 +680,7 @@ els.zipInput.addEventListener("change", () => {
   if (file) selectZipFile(file);
 });
 els.uploadBtn.addEventListener("click", () => uploadResult(selectedZipFile));
+els.resetSessionBtn.addEventListener("click", resetSession);
 els.themeToggle.addEventListener("click", toggleTheme);
 els.applyTpsGranularityBtn.addEventListener("click", applyTpsGranularity);
 els.resetTpsGranularityBtn.addEventListener("click", resetTpsGranularity);
