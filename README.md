@@ -2,6 +2,18 @@
 
 Parser dan dashboard untuk membaca raw result LoadRunner / OpenText Performance Engineering dari folder result seperti `RawResults_12`.
 
+> **Kepemilikan.** Ide, desain, dan pembangunan tools ini oleh **Moh. Iqbal Firman Ardiansyah**,
+> dikerjakan sejak Mei 2026. Dibuat karena LoadRunner Analysis bawaan sangat lambat dan sering
+> crash saat membuka raw result berukuran besar. Internal — tidak untuk didistribusikan ulang atau
+> dipublikasikan tanpa izin penulis. Riwayat commit di repo ini adalah catatan kepenulisannya.
+
+## Branch
+
+| Branch | Isi | Untuk siapa |
+|---|---|---|
+| `main` | Versi terbaru dan terlengkap: upload ZIP, `server.js`, worker ingest, session per browser | Dipakai dan dipelihara penulis |
+| `lokal` | Versi yang hanya berjalan di laptop sendiri (`npm run dev`, isi path folder result). Tanpa upload ZIP dan tanpa mode server | Untuk orang lain yang ingin mencoba sendiri |
+
 ## Requirement
 
 - Node.js 18 atau lebih baru.
