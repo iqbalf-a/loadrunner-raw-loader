@@ -168,6 +168,9 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 8787,
+    watch: {
+      ignored: ["**/.loadrunner-cache/**"],
+    },
   },
   build: {
     rollupOptions: {
