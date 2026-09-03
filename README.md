@@ -4,6 +4,9 @@ Parser dan dashboard untuk membaca raw result LoadRunner / OpenText Performance 
 
 **Author:** Moh. Iqbal Firman Ardiansyah
 
+Dibuat karena LoadRunner Analysis (LRA) lambat dan sering crash saat membuka raw result besar,
+sehingga analisis hasil test tertahan dan menghambat jalannya project di tim testing.
+
 ## Branch
 
 | Branch | Isi | Untuk siapa |
