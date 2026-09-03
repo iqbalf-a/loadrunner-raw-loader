@@ -168,6 +168,7 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 8787,
+    // Runtime cache, bukan source — watch file .wal yang dikunci DuckDB bikin crash EBUSY di Windows.
     watch: {
       ignored: ["**/.loadrunner-cache/**"],
     },
