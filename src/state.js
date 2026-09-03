@@ -1,3 +1,5 @@
+import { resolveGroupName } from "../group-utils.js";
+
 export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 4;
 export const TRANSACTION_SUMMARY_LIMIT = 20;
 
@@ -61,17 +63,10 @@ export function sortRows(rows, sort) {
 
 const measurementNameCaches = new WeakMap();
 
-export function scriptPrefix(name) {
-  const segments = String(name ?? "").split("_");
-  return segments.find((segment) => /^[A-Za-z]+\d+[A-Za-z]*$/.test(segment)) ?? null;
-}
+export { scriptPrefix } from "../group-utils.js";
 
 export function resolveGroup(name) {
-  const scriptGroups = state.data?.result?.scriptGroups ?? [];
-  if (!scriptGroups.length) return null;
-  const prefix = scriptPrefix(name);
-  if (!prefix) return null;
-  return scriptGroups.find((g) => scriptPrefix(g.scriptName) === prefix)?.groupName ?? null;
+  return resolveGroupName(name, state.data?.result?.scriptGroups ?? []);
 }
 
 export function groupLikeToRegex(pattern) {
