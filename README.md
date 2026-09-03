@@ -86,3 +86,24 @@ npm run build
 ```
 
 Output di folder `dist/`. Sajikan dengan `vite preview` atau server statis lain.
+
+## Penggunaan memori
+
+Ingest dan query berjalan di DuckDB dengan `memory_limit` yang mengikuti RAM mesin (separuh,
+dibatasi 1-8GB). Kalau muncul `Memory Error: could not allocate block of size ...` untuk result
+yang sangat besar, naikkan batasnya:
+
+```powershell
+$env:LR_DUCKDB_MEMORY_LIMIT = "8GB"
+npm run dev
+```
+
+`LR_DUCKDB_THREADS` bisa diisi (misal `2`) untuk menekan pemakaian memori di mesin kecil.
+
+Sebagai referensi di mesin dev (Node 22, Windows x64, RAM 16 GB):
+
+| Result | Ukuran folder | Waktu ingest | Peak RSS |
+|---|---|---|---|
+| `RawResults_16` | 523 MB | 22 detik | 286 MB |
+| `RawResults_49` | 1407 MB | 57 detik | 542 MB |
+| `RawResults_204` | 3856 MB | 4 menit | 1651 MB |
