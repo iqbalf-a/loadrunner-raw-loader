@@ -1,12 +1,12 @@
 import { formatHms, formatClockAt, parseHms, parsePositiveSeconds, escapeHtml } from "./format.js";
 import {
   state,
-  DEFAULT_GRAPH_GRANULARITY_SECONDS,
+  autoGranularitySeconds,
   resolveGroup,
   buildTransactions,
 } from "./state.js";
 import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
-import { renderMetrics, renderTable, renderTpsSummaryTable, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
+import { renderMetrics, renderTable, renderTpsSummaryTable, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 
 const SERIES_MAX = 30;
@@ -129,6 +129,7 @@ function renderTpsCharts(start, end) {
 }
 
 function renderTpsSummaryPanels() {
+  updateTpsGranularityHeaders();
   renderTpsSummaryTable(state.tpsSummary, els.tpsBody, els.showAllTpsTransactionsBtn, "tpsSummary", "transaction");
   renderTpsSummaryTable(state.tpsSummaryApi, els.tpsApiBody, els.showAllTpsApiBtn, "tpsSummaryApi", "api");
 }
@@ -284,12 +285,14 @@ async function applyTpsGranularity() {
 
 async function resetTpsGranularity() {
   if (!state.data) return;
-  els.tpsGranularity.value = String(DEFAULT_GRAPH_GRANULARITY_SECONDS);
-  state.appliedTpsGranularity = DEFAULT_GRAPH_GRANULARITY_SECONDS;
+  // Default-nya mengikuti durasi run yang sedang dibuka, bukan konstanta tetap.
+  const granularity = autoGranularitySeconds(state.data.result.scenario.durationSeconds);
+  els.tpsGranularity.value = String(granularity);
+  state.appliedTpsGranularity = granularity;
   await withLoadTimer("Resetting granularity", async () => {
     await refreshDashboardData();
     renderAll();
-    els.status.textContent = `Granularity grafik reset to default: ${DEFAULT_GRAPH_GRANULARITY_SECONDS}s bucket`;
+    els.status.textContent = `Granularity grafik reset to auto: ${granularity}s bucket`;
   });
 }
 
@@ -300,7 +303,9 @@ async function applySessionPayload(payload) {
   els.endTime.value = formatHms(duration);
   state.appliedStart = 0;
   state.appliedEnd = duration;
-  state.appliedTpsGranularity = parsePositiveSeconds(els.tpsGranularity.value) || DEFAULT_GRAPH_GRANULARITY_SECONDS;
+  // Default-nya mengikuti durasi run yang sedang dibuka, bukan konstanta tetap.
+  state.appliedTpsGranularity = autoGranularitySeconds(duration);
+  els.tpsGranularity.value = String(state.appliedTpsGranularity);
   await refreshDashboardData();
   renderAll();
 }

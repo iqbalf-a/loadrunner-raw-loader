@@ -1,6 +1,22 @@
 export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 5;
 export const TRANSACTION_SUMMARY_LIMIT = 20;
 
+// Pilihan granularity ala LoadRunner Analysis: lebar bucket dipilih menyesuaikan durasi run,
+// bukan angka tetap. Bucket yang terlalu sempit membuat Max TPS jatuh ke lantai kuantisasi
+// 1/granularity untuk transaksi yang jarang (bucket terpadatnya cuma berisi 1 transaksi),
+// sehingga Max terlihat jauh dari Avg padahal yang terukur hanyalah lebar bucket-nya.
+// Dimulai dari 5s, bukan 1s: LoadRunner menulis raw sample dengan jarak kelipatan 5 detik,
+// jadi bucket di bawah itu hanya menambah lantai kuantisasi tanpa menambah informasi.
+export const GRANULARITY_STEPS_SECONDS = [5, 10, 15, 30, 60, 120, 300, 600];
+export const TARGET_GRAPH_POINTS = 300;
+
+export function autoGranularitySeconds(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) return DEFAULT_GRAPH_GRANULARITY_SECONDS;
+  return GRANULARITY_STEPS_SECONDS.find((step) => duration / step <= TARGET_GRAPH_POINTS)
+    ?? GRANULARITY_STEPS_SECONDS[GRANULARITY_STEPS_SECONDS.length - 1];
+}
+
 export const state = {
   data: null,
   transactions: [],

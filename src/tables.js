@@ -97,9 +97,28 @@ const TPS_MODE_COLUMNS = {
   ],
 };
 
+// Max TPS adalah nilai tertinggi dari titik-titik grafik, jadi angkanya ikut berubah kalau lebar
+// bucket diganti — sama seperti Maximum di legend grafik LoadRunner Analysis. Granularity-nya
+// ditempel ke header supaya angka itu tidak terbaca sebagai peak absolut yang berdiri sendiri.
+function granularitySuffix() {
+  return `<span class="muted normal-case">@${state.appliedTpsGranularity}s</span>`;
+}
+
+function tpsHeadLabel(key, label) {
+  return key === "maxTps" ? `${label} ${granularitySuffix()}` : label;
+}
+
 export function renderTpsSummaryHead(target, mode) {
   const columns = TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
-  target.innerHTML = columns.map(([key, label, align]) => TPS_HEAD_CELL(key, label, align)).join("");
+  target.innerHTML = columns.map(([key, label, align]) => TPS_HEAD_CELL(key, tpsHeadLabel(key, label), align)).join("");
+}
+
+// Header tabel TPS di panel utama ditulis statis di index.html, jadi suffix granularity-nya
+// disuntikkan ke elemen penampung setiap kali panel dirender ulang.
+export function updateTpsGranularityHeaders() {
+  document.querySelectorAll("[data-granularity-suffix]").forEach((el) => {
+    el.textContent = `@${state.appliedTpsGranularity}s`;
+  });
 }
 
 function tpsCell(value, align = "right", cls = "") {
