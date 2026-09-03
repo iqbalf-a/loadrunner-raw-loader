@@ -2,10 +2,10 @@
 
 Parser dan dashboard untuk membaca raw result LoadRunner / OpenText Performance Engineering dari folder result seperti `RawResults_12`.
 
-> **Kepemilikan.** Ide, desain, dan pembangunan tools ini oleh **Moh. Iqbal Firman Ardiansyah**,
-> dikerjakan sejak Mei 2026. Dibuat karena LoadRunner Analysis bawaan sangat lambat dan sering
-> crash saat membuka raw result berukuran besar. Internal — tidak untuk didistribusikan ulang atau
-> dipublikasikan tanpa izin penulis. Riwayat commit di repo ini adalah catatan kepenulisannya.
+**Author:** Moh. Iqbal Firman Ardiansyah
+
+Dibuat karena LoadRunner Analysis (LRA) lambat dan sering crash saat membuka raw result besar,
+sehingga analisis hasil test tertahan dan menghambat jalannya project di tim testing.
 
 Ini branch **`lokal`**: dashboard hanya berjalan di mesin sendiri lewat `npm run dev`, dengan raw
 result dibaca dari folder di komputer yang sama. Versi terbaru dan terlengkap (upload ZIP dan mode
