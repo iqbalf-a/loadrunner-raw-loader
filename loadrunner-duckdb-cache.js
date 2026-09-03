@@ -8,6 +8,8 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { loadLoadRunnerResult } from "./loadrunner-raw-loader.js";
 
 const CACHE_DIR = path.resolve(".loadrunner-cache");
+const DUCKDB_MEMORY_LIMIT = process.env.LR_DUCKDB_MEMORY_LIMIT || "1GB";
+const DUCKDB_THREADS = Number(process.env.LR_DUCKDB_THREADS) || 0;
 const MAX_POINTS_PER_SERIES = 600;
 const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
 const SITESCOPE_METRIC_PATTERN = /\/CPU\/utilization$|\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
@@ -37,6 +39,51 @@ async function fingerprint(resultDir) {
     }
   }));
   return createHash("sha256").update(parts.sort().join("\n")).digest("hex");
+}
+
+// DuckDB default-nya memakai sampai 80% RAM mesin, yang menyisakan terlalu sedikit memori untuk
+// heap V8 saat ingest result besar. Batasnya dibuat eksplisit dan bisa diatur lewat env.
+function duckdbConfig(extra = {}) {
+  const config = {
+    memory_limit: DUCKDB_MEMORY_LIMIT,
+    temp_directory: `${CACHE_DIR.replaceAll("\\", "/")}/tmp`,
+    ...extra,
+  };
+  if (DUCKDB_THREADS) config.threads = String(DUCKDB_THREADS);
+  return config;
+}
+
+function describeLockError(error, databasePath) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/being used by another process|already open/i.test(message)) return error;
+  return new Error(
+    `File cache ${path.basename(databasePath)} sedang dipegang proses Node lain. `
+    + "Pastikan hanya satu dev server yang jalan, lalu ulangi. "
+    + `Detail: ${message}`,
+  );
+}
+
+// Query dibuka read-only supaya beberapa proses bisa membaca file cache yang sama bersamaan;
+// hanya ingest yang butuh akses tulis eksklusif.
+async function openConnection(databasePath) {
+  try {
+    const instance = await DuckDBInstance.fromCache(databasePath, duckdbConfig({ access_mode: "READ_ONLY" }));
+    return await instance.connect();
+  } catch (error) {
+    throw describeLockError(error, databasePath);
+  }
+}
+
+// Instance tulis sengaja tidak di-cache: begitu ingest selesai, instance-nya ditutup supaya lock
+// filenya dilepas dan proses lain bisa membaca cache tersebut.
+async function openWritableDatabase(databasePath) {
+  try {
+    const instance = await DuckDBInstance.create(databasePath, duckdbConfig());
+    const connection = await instance.connect();
+    return { instance, connection };
+  } catch (error) {
+    throw describeLockError(error, databasePath);
+  }
 }
 
 async function queryRows(connection, sql, values = {}) {
@@ -101,10 +148,9 @@ export async function openLoadRunnerCache(resultDir) {
   }
 
   // Reuse the established metadata parser, but avoid retaining every graph point in JS.
-  const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false });
+  const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false, includeOffline: false });
   const result = publicResult(parsed);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const { instance, connection } = await openWritableDatabase(databasePath);
   try {
     await connection.run("DROP TABLE IF EXISTS rows");
     await connection.run(`CREATE TABLE rows (
@@ -121,6 +167,7 @@ export async function openLoadRunnerCache(resultDir) {
     return metadata;
   } finally {
     connection.closeSync();
+    instance.closeSync();
   }
 }
 
@@ -134,8 +181,7 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
   const focusGraphType = options.focusGraphType ?? "";
   const focusMeasurementId = Number.isFinite(options.focusMeasurementId) ? options.focusMeasurementId : -1;
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const seriesCounts = await queryRows(connection, `
       SELECT graph_type, count(*) AS total
@@ -182,8 +228,7 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const names = new Map(result.graphs.flatMap((graph) => graph.measurements.map((m) => [`${graph.type}:${m.id}`, m.name])));
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const aggregates = await queryRows(connection, `
       SELECT graph_type, measurement_id, min(value) AS min, avg(value) AS avg,
@@ -229,8 +274,7 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     // Every transaction's Avg/Min TPS must be measured against the SAME shared time base
@@ -300,8 +344,7 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     const ranked = await queryRows(connection, `
@@ -363,8 +406,7 @@ export async function queryTpsSeries(session, requestedStart, requestedEnd, requ
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
-  const instance = await DuckDBInstance.fromCache(databasePath);
-  const connection = await instance.connect();
+  const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
     const ranked = await queryRows(connection, `

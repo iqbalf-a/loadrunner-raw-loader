@@ -219,32 +219,34 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime, inc
     if (![measurementId, timestamp, value, count, min, max, stddev].every(Number.isFinite)) continue;
 
     const measurement = measurementsById.get(measurementId);
-    const row = compactRows
-      ? {
-        measurementId,
-        elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
-        value,
-        count,
-        min,
-        max,
-        stddev,
-      }
-      : {
-        measurementId,
-        measurementName: measurement?.name ?? null,
-        graphIndex: measurement?.graphIndex ?? null,
-        graphType: measurement?.graphType ?? null,
-        timestamp,
-        isoUtc: epochToIso(timestamp),
-        elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
-        value,
-        count,
-        min,
-        max,
-        stddev,
-      };
-
-    if (includeRows && includeMeasurement(measurement)) rows.push(row);
+    // Jalur ingest memanggil dengan includeRows=false. Objek row hanya dibentuk kalau benar-benar
+    // dipakai — kalau tidak, file 150 MB menghasilkan jutaan objek sampah yang menekan heap.
+    if (includeRows && includeMeasurement(measurement)) {
+      rows.push(compactRows
+        ? {
+          measurementId,
+          elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
+          value,
+          count,
+          min,
+          max,
+          stddev,
+        }
+        : {
+          measurementId,
+          measurementName: measurement?.name ?? null,
+          graphIndex: measurement?.graphIndex ?? null,
+          graphType: measurement?.graphType ?? null,
+          timestamp,
+          isoUtc: epochToIso(timestamp),
+          elapsedSeconds: Number.isFinite(scenarioStartTime) ? timestamp - scenarioStartTime : null,
+          value,
+          count,
+          min,
+          max,
+          stddev,
+        });
+    }
 
     if (!includeStats) continue;
     const current = statsByMeasurement.get(measurementId) ?? {
@@ -334,7 +336,7 @@ async function parseOfflineDefinitions(resultDir) {
   return definitions;
 }
 
-async function parseOfflineData(filePath, definitions, includeRows) {
+async function parseOfflineData(filePath, definitions, includeRows, includeStats = true) {
   if (!existsSync(filePath)) return { rowCount: 0, stats: [], rows: includeRows ? [] : undefined };
 
   const rows = [];
@@ -352,19 +354,19 @@ async function parseOfflineData(filePath, definitions, includeRows) {
     const timestamp = Number(timestampText);
     const value = Number(valueText);
     const definition = definitions[label];
-    const row = {
-      label,
-      name: definition?.graphTitle ?? null,
-      timestamp,
-      isoUtc: epochToIso(timestamp),
-      value,
-    };
+    const name = definition?.graphTitle ?? null;
 
-    if (includeRows) rows.push(row);
+    if (includeRows) {
+      rows.push({ label, name, timestamp, isoUtc: epochToIso(timestamp), value });
+    }
+
+    // Statistik offline menahan setiap nilai di memori untuk perhitungan persentil. Jalur ingest
+    // tidak memerlukannya (data SiteScope diambil dari sum_data), jadi bisa dilewati.
+    if (!includeStats) continue;
 
     const current = statsByLabel.get(label) ?? {
       label,
-      name: row.name,
+      name,
       samples: 0,
       min: Number.POSITIVE_INFINITY,
       max: Number.NEGATIVE_INFINITY,
@@ -422,11 +424,16 @@ async function loadLoadRunnerResult(resultDir, options = {}) {
     includeStats,
   );
 
-  const offline = await parseOfflineData(
-    path.join(resolvedResultDir, "offline.dat"),
-    offlineDefinitions,
-    includeOfflineRows,
-  );
+  // offline.dat bisa ratusan MB dan hanya dipakai ringkasan CLI; ingest dashboard mengambil
+  // data SiteScope dari sum_data, jadi bisa dilewati sepenuhnya.
+  const offline = options.includeOffline === false
+    ? { rowCount: 0, stats: [], rows: includeOfflineRows ? [] : undefined }
+    : await parseOfflineData(
+      path.join(resolvedResultDir, "offline.dat"),
+      offlineDefinitions,
+      includeOfflineRows,
+      includeStats,
+    );
 
   const scriptGroups = parseScriptGroups(scenarioIni);
 
