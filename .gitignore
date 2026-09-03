@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.log
 loadrunner-summary.json
+*.zip
 /.loadrunner-cache/
 /.loadrunner-uploads/
 
