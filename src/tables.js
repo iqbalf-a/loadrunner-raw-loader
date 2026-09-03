@@ -97,15 +97,17 @@ const TPS_MODE_COLUMNS = {
   ],
 };
 
-// Max TPS adalah nilai tertinggi dari titik-titik grafik, jadi angkanya ikut berubah kalau lebar
-// bucket diganti — sama seperti Maximum di legend grafik LoadRunner Analysis. Granularity-nya
-// ditempel ke header supaya angka itu tidak terbaca sebagai peak absolut yang berdiri sendiri.
+// Min/Max TPS are graph readings (lowest/highest plotted bucket), so they move with bucket width
+// — same as Min/Max in the LoadRunner Analysis graph legend. Granularity is tagged onto both
+// headers so those numbers aren't read as standalone absolutes. Avg TPS is a plain rate (total
+// transactions / elapsed window) and is intentionally NOT bucket-dependent, matching LRA's own
+// Min/Avg/Max naming — LRA never calls it "Avg graph", only Min and Max carry that framing.
 function granularitySuffix() {
   return `<span class="muted normal-case">@${state.appliedTpsGranularity}s</span>`;
 }
 
 function tpsHeadLabel(key, label) {
-  return key === "maxTps" ? `${label} ${granularitySuffix()}` : label;
+  return key === "maxTps" || key === "minTps" ? `${label} ${granularitySuffix()}` : label;
 }
 
 export function renderTpsSummaryHead(target, mode) {

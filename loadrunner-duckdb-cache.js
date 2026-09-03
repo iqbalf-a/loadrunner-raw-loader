@@ -290,12 +290,13 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
   const connection = await openConnection(databasePath);
   try {
     const idListSql = candidates.map((m) => m.id).join(",");
-    // Every transaction's Avg/Min TPS must be measured against the SAME shared time base
-    // (total_buckets = how many 5s-ish intervals had ANY activity across this whole filtered
-    // group), not each transaction's own active-bucket count — otherwise infrequent transactions
-    // get an inflated per-transaction average (dividing by only their own sparse activity), and
-    // summing the Avg column across hundreds of transactions massively overshoots the real
-    // combined throughput. This mirrors how LoadRunner Analysis reports per-transaction TPS.
+    // Min/Max TPS are graph readings — they are the highest/lowest plotted bucket, so they are
+    // supposed to move with the bucket width (granularity), same as the LRA graph legend.
+    // Avg TPS is NOT a graph reading: it is total transactions / actual elapsed window, a plain
+    // rate that must stay identical no matter what granularity the graph happens to use. Using
+    // the fixed window (not bucket count * granularity) also keeps every transaction's Avg on the
+    // SAME shared time base regardless of how sparse it is, so summing the Avg column stays valid.
+    const windowSeconds = Math.max(1, end - start);
     const aggregates = await queryRows(connection, `
       WITH bucketed AS (
         SELECT measurement_id,
@@ -322,7 +323,7 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
       return {
         name: names.get(item.measurement_id) ?? String(item.measurement_id),
         minTps: points < totalBuckets ? 0 : item.min_tps_active,
-        avgTps: Number(item.total) / (totalBuckets * granularity),
+        avgTps: Number(item.total) / windowSeconds,
         maxTps: item.max_tps,
         points,
       };
