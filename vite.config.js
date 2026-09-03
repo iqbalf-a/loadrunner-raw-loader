@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import { createConsoleSummary } from "./loadrunner-raw-loader.js";
-import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryResponseTimeSeries, queryTpsSeries } from "./loadrunner-duckdb-cache.js";
+import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryResponseTimeSeries, queryTpsSeries, queryTpsDetailSummary, queryTpsDetailSeries, queryTpsOverall } from "./loadrunner-duckdb-cache.js";
 
 function parseExtraNames(url) {
   const raw = url.searchParams.get("extraNames");
@@ -86,6 +86,46 @@ export default defineConfig({
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
             sendJson(res, 200, await queryTpsSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || ""));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-detail-summary", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsDetailSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP"));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-detail-series", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsDetailSeries(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
+              maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
+              namePrefix: url.searchParams.get("namePrefix") || "BP",
+              extraNames: parseExtraNames(url),
+            }));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/tps-overall", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            if (!session) throw new Error("Parameter session wajib diisi.");
+            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
+            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            sendJson(res, 200, await queryTpsOverall(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP"));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }

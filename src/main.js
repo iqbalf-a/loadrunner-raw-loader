@@ -6,7 +6,7 @@ import {
   buildTransactions,
 } from "./state.js";
 import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
-import { renderMetrics, renderTable, renderTpsSummaryTable, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
+import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 
 const SERIES_MAX = 30;
@@ -35,6 +35,9 @@ const els = {
   showAllTpsTransactionsBtn: document.getElementById("showAllTpsTransactionsBtn"),
   tpsApiBody: document.getElementById("tpsApiBody"),
   showAllTpsApiBtn: document.getElementById("showAllTpsApiBtn"),
+  tpsDetailBody: document.getElementById("tpsDetailBody"),
+  showAllTpsDetailBtn: document.getElementById("showAllTpsDetailBtn"),
+  tpsOverallBody: document.getElementById("tpsOverallBody"),
   tpsModal: document.getElementById("tpsModal"),
   tpsModalTitle: document.getElementById("tpsModalTitle"),
   tpsModalHead: document.getElementById("tpsModalHead"),
@@ -46,11 +49,14 @@ const els = {
   seriesCountRtApi: document.getElementById("seriesCountRtApi"),
   seriesCountTps: document.getElementById("seriesCountTps"),
   seriesCountTpsApi: document.getElementById("seriesCountTpsApi"),
+  seriesCountTpsDetail: document.getElementById("seriesCountTpsDetail"),
   transactionRtChart: document.getElementById("transactionRtChart"),
   transactionRtApiChart: document.getElementById("transactionRtApiChart"),
   vusersChart: document.getElementById("vusersChart"),
   tpsChart: document.getElementById("tpsChart"),
   tpsApiChart: document.getElementById("tpsApiChart"),
+  tpsDetailChart: document.getElementById("tpsDetailChart"),
+  tpsOverallChart: document.getElementById("tpsOverallChart"),
   siteScopeCpuChart: document.getElementById("siteScopeCpuChart"),
   siteScopeMemoryChart: document.getElementById("siteScopeMemoryChart"),
   siteScopeCpuBody: document.getElementById("siteScopeCpuBody"),
@@ -118,12 +124,20 @@ function renderTpsCharts(start, end) {
   els.tpsGranularityLabel.textContent = `${state.appliedTpsGranularity}s bucket`;
   drawMultiLineChart(els.tpsChart, applySelection("tpsTransaction", seriesFromFlatRows(state.tpsSeriesRows ?? [])), start, end);
   drawMultiLineChart(els.tpsApiChart, applySelection("tpsApi", seriesFromFlatRows(state.tpsApiSeriesRows ?? [])), start, end);
+  drawMultiLineChart(els.tpsDetailChart, applySelection("tpsDetail", seriesFromFlatRows(state.tpsDetailSeriesRows ?? [])), start, end);
+  drawMultiLineChart(els.tpsOverallChart, [{
+    name: "Overall TPS",
+    color: "#00bf8f",
+    points: (state.tpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
+  }], start, end);
 }
 
 function renderTpsSummaryPanels() {
   updateTpsGranularityHeaders();
   renderTpsSummaryTable(state.tpsSummary, els.tpsBody, els.showAllTpsTransactionsBtn, "tpsSummary", "transaction");
   renderTpsSummaryTable(state.tpsSummaryApi, els.tpsApiBody, els.showAllTpsApiBtn, "tpsSummaryApi", "api");
+  renderTpsSummaryTable(state.tpsDetail, els.tpsDetailBody, els.showAllTpsDetailBtn, "tpsDetail", "detail");
+  renderTpsOverall(els.tpsOverallBody, state.tpsOverall);
 }
 
 function applySelection(key, allSeries) {
@@ -173,7 +187,7 @@ function renderCharts(transactions, start, end) {
   );
   renderTpsCharts(start, end);
   renderSiteScopeSection(els, start, end, applySelection);
-  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "siteScopeCpu", "siteScopeMemory"].forEach(refreshExpandedChartSelector);
+  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory"].forEach(refreshExpandedChartSelector);
 }
 
 const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
@@ -347,6 +361,7 @@ async function refreshDashboardData() {
   const [
     dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse, tpsSummaryApiResponse,
     responseTimeResponse, responseTimeApiResponse, tpsSeriesResponse, tpsApiSeriesResponse,
+    tpsDetailSummaryResponse, tpsDetailSeriesResponse, tpsOverallResponse,
   ] = await Promise.all([
     fetch(`/api/dashboard?${params}`),
     fetch(`/api/transactions?${params}&offset=0&namePrefix=BP`),
@@ -357,6 +372,9 @@ async function refreshDashboardData() {
     fetch(`/api/response-time-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTimeApi"))}`),
     fetch(`/api/tps-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsTransaction"))}`),
     fetch(`/api/tps-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsApi"))}`),
+    fetch(`/api/tps-detail-summary?${params}&namePrefix=BP`),
+    fetch(`/api/tps-detail-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsDetail"))}`),
+    fetch(`/api/tps-overall?${params}&namePrefix=BP`),
   ]);
   const dashboard = await dashboardResponse.json();
   const transactions = await transactionsResponse.json();
@@ -367,6 +385,9 @@ async function refreshDashboardData() {
   const responseTimeApi = await responseTimeApiResponse.json();
   const tpsSeries = await tpsSeriesResponse.json();
   const tpsApiSeries = await tpsApiSeriesResponse.json();
+  const tpsDetailSummary = await tpsDetailSummaryResponse.json();
+  const tpsDetailSeries = await tpsDetailSeriesResponse.json();
+  const tpsOverall = await tpsOverallResponse.json();
   if (!dashboardResponse.ok) throw new Error(dashboard.error || "Dashboard query failed");
   if (!transactionsResponse.ok) throw new Error(transactions.error || "Transaction query failed");
   if (!rpsTransactionsResponse.ok) throw new Error(rpsTransactions.error || "RPS transaction query failed");
@@ -376,6 +397,9 @@ async function refreshDashboardData() {
   if (!responseTimeApiResponse.ok) throw new Error(responseTimeApi.error || "Response time by API query failed");
   if (!tpsSeriesResponse.ok) throw new Error(tpsSeries.error || "TPS by transaction series query failed");
   if (!tpsApiSeriesResponse.ok) throw new Error(tpsApiSeries.error || "TPS by API series query failed");
+  if (!tpsDetailSummaryResponse.ok) throw new Error(tpsDetailSummary.error || "TPS detail summary query failed");
+  if (!tpsDetailSeriesResponse.ok) throw new Error(tpsDetailSeries.error || "TPS detail series query failed");
+  if (!tpsOverallResponse.ok) throw new Error(tpsOverall.error || "TPS overall query failed");
 
   const graphs = new Map(result.graphs.map((graph) => [graph.type, graph]));
   for (const graph of result.graphs) graph.rows = [];
@@ -406,12 +430,17 @@ async function refreshDashboardData() {
   state.responseTimeApiRows = responseTimeApi.rows;
   state.tpsSeriesRows = tpsSeries.rows;
   state.tpsApiSeriesRows = tpsApiSeries.rows;
+  state.tpsDetail = tpsDetailSummary.rows;
+  state.tpsDetailSeriesRows = tpsDetailSeries.rows;
+  state.tpsOverall = tpsOverall;
+  state.tpsOverallSeriesRows = tpsOverall.series;
   state.seriesCountByType = dashboard.seriesCountByType ?? {};
   const capHint = (total) => (total > SERIES_MAX ? `(top ${Math.min(total, SERIES_MAX)} of ${total} by volume)` : "");
   els.seriesCountRt.textContent = capHint(responseTime.total ?? 0);
   els.seriesCountRtApi.textContent = capHint(responseTimeApi.total ?? 0);
   els.seriesCountTps.textContent = capHint(tpsSeries.total ?? 0);
   els.seriesCountTpsApi.textContent = capHint(tpsApiSeries.total ?? 0);
+  els.seriesCountTpsDetail.textContent = capHint(tpsDetailSeries.total ?? 0);
 }
 
 function applyGroupFilter() {
@@ -492,6 +521,7 @@ function getTableRows(tableKey) {
     case "txRps": return state.rpsTransactions;
     case "tpsSummary": return state.tpsSummary;
     case "tpsSummaryApi": return state.tpsSummaryApi;
+    case "tpsDetail": return state.tpsDetail;
     default: return [];
   }
 }
@@ -548,6 +578,7 @@ els.transactionModal.addEventListener("click", (event) => {
 });
 els.showAllTpsTransactionsBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummary, "TPS (Chart + Table)", "tpsSummary", "transaction"));
 els.showAllTpsApiBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummaryApi, "RPS (Chart + Table)", "tpsSummaryApi", "api"));
+els.showAllTpsDetailBtn.addEventListener("click", () => openTpsModal(els, state.tpsDetail, "TPS Detail (Chart + Table)", "tpsDetail", "detail"));
 els.closeTpsModalBtn.addEventListener("click", () => closeTpsModal(els));
 els.copyTpsModalBtn.addEventListener("click", () => copyTableRows(els.tpsModalTable, els.copyTpsModalBtn));
 els.tpsModal.addEventListener("click", (event) => {
@@ -592,7 +623,7 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   state[rowsField] = payload.rows;
 }
 
-["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "siteScopeCpu", "siteScopeMemory"].forEach((key) => {
+["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory"].forEach((key) => {
   const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
   const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
   if (key === "responseTime") {
@@ -607,6 +638,9 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   } else if (key === "tpsApi") {
     configureChartSelector(key, () => state.tpsSummaryApi.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
       (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing));
+  } else if (key === "tpsDetail") {
+    configureChartSelector(key, () => state.tpsDetail.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing));
   } else {
     configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected);
   }
