@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { createReadStream } from "node:fs";
@@ -10,7 +11,16 @@ import { loadLoadRunnerResult } from "./loadrunner-raw-loader.js";
 const CACHE_DIR = path.resolve(process.env.LR_CACHE_DIR || ".loadrunner-cache");
 
 export { CACHE_DIR };
-const DUCKDB_MEMORY_LIMIT = process.env.LR_DUCKDB_MEMORY_LIMIT || "1GB";
+// Batas 1GB tetap terlalu kecil untuk result besar: quantile_cont di queryTransactions dan
+// pembuatan index saat ingest butuh ruang yang sebanding dengan jumlah baris. Default-nya
+// mengikuti RAM mesin (separuh, dibatasi 1-8GB) supaya laptop 16GB tidak dikunci di 1GB dan
+// server kecil tetap tidak kehabisan memori.
+function defaultMemoryLimit() {
+  const halfGigabytes = Math.floor(os.totalmem() / 2 ** 30 / 2);
+  return `${Math.min(Math.max(halfGigabytes, 1), 8)}GB`;
+}
+
+const DUCKDB_MEMORY_LIMIT = process.env.LR_DUCKDB_MEMORY_LIMIT || defaultMemoryLimit();
 const DUCKDB_THREADS = Number(process.env.LR_DUCKDB_THREADS) || 0;
 const MAX_POINTS_PER_SERIES = 600;
 const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
@@ -50,6 +60,9 @@ function duckdbConfig(extra = {}) {
   const config = {
     memory_limit: DUCKDB_MEMORY_LIMIT,
     temp_directory: `${CACHE_DIR.replaceAll("\\", "/")}/tmp`,
+    // Urutan hasil selalu ditentukan eksplisit (ORDER BY di query, atau sort di JS pada
+    // queryTransactions), jadi mempertahankan urutan penyisipan hanya memakan memori.
+    preserve_insertion_order: "false",
     ...extra,
   };
   if (DUCKDB_THREADS) config.threads = String(DUCKDB_THREADS);
