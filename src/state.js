@@ -1,14 +1,14 @@
-export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 5;
+export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 4;
 export const TRANSACTION_SUMMARY_LIMIT = 20;
 
-// Pilihan granularity ala LoadRunner Analysis: lebar bucket dipilih menyesuaikan durasi run,
-// bukan angka tetap. Bucket yang terlalu sempit membuat Max TPS jatuh ke lantai kuantisasi
-// 1/granularity untuk transaksi yang jarang (bucket terpadatnya cuma berisi 1 transaksi),
-// sehingga Max terlihat jauh dari Avg padahal yang terukur hanyalah lebar bucket-nya.
-// Dimulai dari 5s, bukan 1s: LoadRunner menulis raw sample dengan jarak kelipatan 5 detik,
-// jadi bucket di bawah itu hanya menambah lantai kuantisasi tanpa menambah informasi.
-export const GRANULARITY_STEPS_SECONDS = [5, 10, 15, 30, 60, 120, 300, 600];
-export const TARGET_GRAPH_POINTS = 300;
+// Aturan granularity default LoadRunner Analysis: pangkat 2 terkecil (dalam detik) yang membuat
+// grafik muat dalam TARGET_GRAPH_POINTS titik. Dicocokkan terhadap LRA pada run 8148 detik, yang
+// di sana default-nya 256s -- persis 8148/256 = 31.8 titik, sementara 128s sudah 63.7 titik.
+// Memakai lebar bucket yang sama dengan LRA membuat angka TPS di dashboard ini apple to apple
+// dengan LRA. Bucket lebar juga menjauhkan Max TPS dari lantai kuantisasi 1/granularity, yang
+// muncul saat bucket terpadat sebuah transaksi cuma berisi satu transaksi.
+export const GRANULARITY_STEPS_SECONDS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+export const TARGET_GRAPH_POINTS = 32;
 
 export function autoGranularitySeconds(durationSeconds) {
   const duration = Number(durationSeconds);
