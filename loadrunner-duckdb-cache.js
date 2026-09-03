@@ -7,6 +7,7 @@ import readline from "node:readline";
 import { createReadStream } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { loadLoadRunnerResult } from "./loadrunner-raw-loader.js";
+import { resolveGroupName } from "./group-utils.js";
 
 const CACHE_DIR = path.resolve(process.env.LR_CACHE_DIR || ".loadrunner-cache");
 
@@ -357,6 +358,198 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLimit = Number(limit) > 0 ? Number(limit) : all.length;
     return { start, end, granularity, total: all.length, rows: all.slice(safeOffset, safeOffset + safeLimit) };
+  } finally {
+    connection.closeSync();
+  }
+}
+
+function tpsCandidates(result, namePrefix) {
+  const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
+  return (graph?.measurements ?? [])
+    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
+    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
+    .filter((m) => !/exc/i.test(m.name))
+    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+}
+
+// TPS Detail: same Min/Avg/Max/Points as queryTpsSummary, but rolled up per BP group instead of
+// per transaction. The group's own bucket series is the SUM of its member transactions' bucket
+// totals (not a sum of their already-computed Min/Max), so Max here is a real, physically-possible
+// peak — the group's actual combined throughput at one point in time — not an overstated sum of
+// peaks that happened at different times (see .claude/memory/tps-max-granularity.md).
+export async function queryTpsDetailSummary(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP") {
+  const { result } = session;
+  const duration = Number(result.scenario.durationSeconds) || 0;
+  const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
+  const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
+  const granularity = Math.max(1, Number(requestedGranularity) || 10);
+  const candidates = tpsCandidates(result, namePrefix);
+  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+  const groupOf = new Map(candidates.map((m) => [m.id, resolveGroupName(m.name, result.scriptGroups) ?? "-"]));
+
+  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
+  const connection = await openConnection(databasePath);
+  try {
+    const idListSql = candidates.map((m) => m.id).join(",");
+    const windowSeconds = Math.max(1, end - start);
+    const buckets = await queryRows(connection, `
+      SELECT measurement_id,
+        floor((elapsed_seconds - $start) / $granularity) AS bucket_index,
+        sum(value) AS bucket_total
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${idListSql})
+      GROUP BY measurement_id, bucket_index`, { start, end, granularity });
+
+    // Shared time base across the WHOLE filtered set (all groups combined), same concept as
+    // queryTpsSummary's total_buckets — used to force a group's Min to 0 when it wasn't active in
+    // every bucket the rest of the group had.
+    const totalBucketIndexes = new Set();
+    const perGroup = new Map();
+    for (const row of buckets) {
+      totalBucketIndexes.add(row.bucket_index);
+      const label = groupOf.get(row.measurement_id) ?? "-";
+      let bucketMap = perGroup.get(label);
+      if (!bucketMap) {
+        bucketMap = new Map();
+        perGroup.set(label, bucketMap);
+      }
+      bucketMap.set(row.bucket_index, (bucketMap.get(row.bucket_index) ?? 0) + Number(row.bucket_total));
+    }
+    const totalBuckets = Math.max(1, totalBucketIndexes.size);
+
+    const rows = [...perGroup.entries()].map(([name, bucketMap]) => {
+      const values = [...bucketMap.values()];
+      const points = values.length;
+      const total = values.reduce((sum, value) => sum + value, 0);
+      return {
+        name,
+        minTps: points < totalBuckets ? 0 : Math.min(...values) / granularity,
+        avgTps: total / windowSeconds,
+        maxTps: Math.max(...values) / granularity,
+        points,
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    return { start, end, granularity, total: rows.length, rows };
+  } finally {
+    connection.closeSync();
+  }
+}
+
+// Time-series counterpart of queryTpsDetailSummary, for the TPS Detail chart. Mirrors
+// queryTpsSeries's top-N-by-volume ranking + selector-driven extraNames, but ranks and buckets by
+// BP group instead of by individual transaction. Returns the same flat {name, elapsedSeconds,
+// value} shape queryTpsSeries does, so the client's seriesFromFlatRows works unchanged.
+export async function queryTpsDetailSeries(session, requestedStart, requestedEnd, requestedGranularity, options = {}) {
+  const { result } = session;
+  const duration = Number(result.scenario.durationSeconds) || 0;
+  const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
+  const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
+  const granularity = Math.max(1, Number(requestedGranularity) || 10);
+  const maxSeries = Math.max(1, Number(options.maxSeries) || DEFAULT_MAX_SERIES_PER_GRAPH);
+  const namePrefix = options.namePrefix ?? "BP";
+  // Group labels the caller wants included regardless of volume ranking (picked via search in the
+  // chart's series selector), same role as queryTpsSeries's extraNames but keyed by group label.
+  const extraNames = new Set(options.extraNames ?? []);
+  const candidates = tpsCandidates(result, namePrefix);
+  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+  const groupOf = new Map(candidates.map((m) => [m.id, resolveGroupName(m.name, result.scriptGroups) ?? "-"]));
+  const allLabels = new Set(groupOf.values());
+
+  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
+  const connection = await openConnection(databasePath);
+  try {
+    const idListSql = candidates.map((m) => m.id).join(",");
+    const perMeasurementTotals = await queryRows(connection, `
+      SELECT measurement_id, sum(value) AS total_value
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${idListSql})
+      GROUP BY measurement_id`, { start, end });
+    const totalByGroup = new Map();
+    for (const row of perMeasurementTotals) {
+      const label = groupOf.get(row.measurement_id) ?? "-";
+      totalByGroup.set(label, (totalByGroup.get(label) ?? 0) + Number(row.total_value));
+    }
+    const rankedLabels = [...totalByGroup.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+    const selectedLabels = new Set([
+      ...rankedLabels.slice(0, maxSeries),
+      ...[...extraNames].filter((name) => allLabels.has(name)),
+    ]);
+    if (!selectedLabels.size) return { start, end, granularity, total: allLabels.size, rows: [] };
+
+    const selectedIds = candidates.filter((m) => selectedLabels.has(groupOf.get(m.id))).map((m) => m.id);
+    const selectedIdsSql = selectedIds.join(",");
+    const bucketRows = await queryRows(connection, `
+      SELECT measurement_id,
+        floor((elapsed_seconds - $start) / $granularity) * $granularity + $start AS bucket_start,
+        sum(value) AS bucket_total
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${selectedIdsSql})
+      GROUP BY measurement_id, bucket_start`, { start, end, granularity });
+
+    const merged = new Map();
+    for (const row of bucketRows) {
+      const label = groupOf.get(row.measurement_id) ?? "-";
+      let byBucket = merged.get(label);
+      if (!byBucket) {
+        byBucket = new Map();
+        merged.set(label, byBucket);
+      }
+      byBucket.set(row.bucket_start, (byBucket.get(row.bucket_start) ?? 0) + Number(row.bucket_total));
+    }
+    const rows = [...merged.entries()].flatMap(([name, byBucket]) =>
+      [...byBucket.entries()].map(([bucketStart, total]) => ({
+        name,
+        elapsedSeconds: Number(bucketStart),
+        value: total / granularity,
+      })));
+
+    return { start, end, granularity, total: allLabels.size, rows };
+  } finally {
+    connection.closeSync();
+  }
+}
+
+// TPS Overall: every candidate transaction combined into ONE series (sum of bucket totals across
+// all of them, per bucket), then Min/Avg/Max/Points measured on that combined series. This is a
+// single line/row, so summary and series are returned together instead of two endpoints.
+export async function queryTpsOverall(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP") {
+  const { result } = session;
+  const duration = Number(result.scenario.durationSeconds) || 0;
+  const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
+  const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
+  const granularity = Math.max(1, Number(requestedGranularity) || 10);
+  const candidates = tpsCandidates(result, namePrefix);
+  if (!candidates.length) return { start, end, granularity, minTps: 0, avgTps: 0, maxTps: 0, points: 0, series: [] };
+
+  const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
+  const connection = await openConnection(databasePath);
+  try {
+    const idListSql = candidates.map((m) => m.id).join(",");
+    const windowSeconds = Math.max(1, end - start);
+    const buckets = await queryRows(connection, `
+      SELECT floor((elapsed_seconds - $start) / $granularity) AS bucket_index, sum(value) AS bucket_total
+      FROM rows
+      WHERE graph_type = 'es_tr_tprange_pass' AND elapsed_seconds BETWEEN $start AND $end
+        AND measurement_id IN (${idListSql})
+      GROUP BY bucket_index
+      ORDER BY bucket_index`, { start, end, granularity });
+    const values = buckets.map((row) => Number(row.bucket_total));
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return {
+      start, end, granularity,
+      minTps: values.length ? Math.min(...values) / granularity : 0,
+      avgTps: total / windowSeconds,
+      maxTps: values.length ? Math.max(...values) / granularity : 0,
+      points: values.length,
+      series: buckets.map((row) => ({
+        elapsedSeconds: start + Number(row.bucket_index) * granularity,
+        value: Number(row.bucket_total) / granularity,
+      })),
+    };
   } finally {
     connection.closeSync();
   }

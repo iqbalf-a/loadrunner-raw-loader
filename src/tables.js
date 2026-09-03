@@ -95,7 +95,19 @@ const TPS_MODE_COLUMNS = {
     ["name", "API", "left"], ["groupName", "Group", "left"],
     ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
   ],
+  // TPS Detail: one row per BP group, so the name IS the group — no separate Group column.
+  detail: [
+    ["name", "BP Group", "left"],
+    ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
+  ],
 };
+
+// Which field the group-filter wildcard matches against for a given mode: for transaction/api rows
+// it's the resolved groupName column, but detail rows ARE already one-row-per-group, so the name
+// itself is the group.
+function groupFilterField(mode) {
+  return mode === "detail" ? "name" : "groupName";
+}
 
 // Min/Max TPS are graph readings (lowest/highest plotted bucket), so they move with bucket width
 // — same as Min/Max in the LoadRunner Analysis graph legend. Granularity is tagged onto both
@@ -127,33 +139,51 @@ function tpsCell(value, align = "right", cls = "") {
   return `<td class="px-3.5 py-2.25 border-b border-(--line) text-${align} whitespace-nowrap ${cls}">${value}</td>`;
 }
 
+const TPS_CELL_RENDERERS = {
+  name: (tx) => tpsCell(escapeHtml(tx.name), "left"),
+  groupName: (tx) => tpsCell(escapeHtml(tx.groupName ?? "-"), "left", "muted"),
+  minTps: (tx) => tpsCell(tx.minTps.toFixed(3)),
+  avgTps: (tx) => tpsCell(tx.avgTps.toFixed(3)),
+  maxTps: (tx) => tpsCell(tx.maxTps.toFixed(3)),
+  points: (tx) => tpsCell(fmtNumber(tx.points), "right", "muted"),
+};
+
 export function renderTpsSummaryRows(rows, mode = "transaction") {
+  const columns = TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
   return rows.map((tx) => `
     <tr class="hover:bg-(--surface)">
-      ${tpsCell(escapeHtml(tx.name), "left")}
-      ${tpsCell(escapeHtml(tx.groupName ?? "-"), "left", "muted")}
-      ${tpsCell(tx.minTps.toFixed(3))}
-      ${tpsCell(tx.avgTps.toFixed(3))}
-      ${tpsCell(tx.maxTps.toFixed(3))}
-      ${tpsCell(fmtNumber(tx.points), "right", "muted")}
+      ${columns.map(([key]) => TPS_CELL_RENDERERS[key](tx)).join("")}
     </tr>
   `).join("");
 }
 
 export function renderTpsSummaryTable(rows, tbody, showAllBtn, tableKey, mode = "transaction") {
+  const field = groupFilterField(mode);
   const re = state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
-  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx.groupName ?? "")) : rows, state.sort[tableKey]);
+  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx[field] ?? "")) : rows, state.sort[tableKey]);
   tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode);
   showAllBtn.hidden = filtered.length <= TRANSACTION_SUMMARY_LIMIT;
   showAllBtn.textContent = `Show All (${filtered.length})`;
 }
 
 export function renderTpsModalContent(els, rows, label, tableKey, mode = "transaction") {
+  const field = groupFilterField(mode);
   const re = state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
-  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx.groupName ?? "")) : rows, state.sort[tableKey]);
+  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx[field] ?? "")) : rows, state.sort[tableKey]);
   els.tpsModalTitle.textContent = `${label} (${filtered.length})`;
   renderTpsSummaryHead(els.tpsModalHead, mode);
   els.tpsModalBody.innerHTML = renderTpsSummaryRows(filtered, mode);
+}
+
+export function renderTpsOverall(target, overall) {
+  target.innerHTML = `
+    <tr>
+      ${tpsCell(overall.minTps.toFixed(3))}
+      ${tpsCell(overall.avgTps.toFixed(3))}
+      ${tpsCell(overall.maxTps.toFixed(3))}
+      ${tpsCell(fmtNumber(overall.points), "right", "muted")}
+    </tr>
+  `;
 }
 
 export function openTpsModal(els, rows, label, tableKey, mode = "transaction") {

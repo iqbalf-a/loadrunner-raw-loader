@@ -11,6 +11,9 @@ import {
   queryTpsSummary,
   queryResponseTimeSeries,
   queryTpsSeries,
+  queryTpsDetailSummary,
+  queryTpsDetailSeries,
+  queryTpsOverall,
 } from "../loadrunner-duckdb-cache.js";
 import { clearClientSession, getClientSession, resolveClientId, setClientSession } from "./clients.js";
 import { enqueueIngest, getIngestJob } from "./ingest-queue.js";
@@ -276,6 +279,46 @@ export function createApiRouter(options = {}) {
               namePrefix: url.searchParams.get("namePrefix") || "",
               extraNames: parseExtraNames(url),
             },
+          ));
+          return true;
+        }
+
+        case "/api/tps-detail-summary": {
+          const metadata = await loadSessionMetadata(requireOwnedSession(url, clientId));
+          sendJson(res, 200, await queryTpsDetailSummary(
+            metadata,
+            Number(url.searchParams.get("start")),
+            Number(url.searchParams.get("end")),
+            Number(url.searchParams.get("granularity")),
+            url.searchParams.get("namePrefix") || "BP",
+          ));
+          return true;
+        }
+
+        case "/api/tps-detail-series": {
+          const metadata = await loadSessionMetadata(requireOwnedSession(url, clientId));
+          sendJson(res, 200, await queryTpsDetailSeries(
+            metadata,
+            Number(url.searchParams.get("start")),
+            Number(url.searchParams.get("end")),
+            Number(url.searchParams.get("granularity")),
+            {
+              maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
+              namePrefix: url.searchParams.get("namePrefix") || "BP",
+              extraNames: parseExtraNames(url),
+            },
+          ));
+          return true;
+        }
+
+        case "/api/tps-overall": {
+          const metadata = await loadSessionMetadata(requireOwnedSession(url, clientId));
+          sendJson(res, 200, await queryTpsOverall(
+            metadata,
+            Number(url.searchParams.get("start")),
+            Number(url.searchParams.get("end")),
+            Number(url.searchParams.get("granularity")),
+            url.searchParams.get("namePrefix") || "BP",
           ));
           return true;
         }
