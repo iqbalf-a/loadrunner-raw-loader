@@ -24,9 +24,9 @@ export default defineConfig({
   server: {
     host: process.env.HOST || "127.0.0.1",
     port: Number(process.env.PORT) || 8787,
-    // Runtime cache, bukan source — watch file .wal yang dikunci DuckDB bikin crash EBUSY di Windows.
+    // Runtime data, bukan source — watch file yang sedang dikunci/ditulis (WAL DuckDB, upload ZIP) bikin crash EBUSY di Windows.
     watch: {
-      ignored: ["**/.loadrunner-cache/**"],
+      ignored: ["**/.loadrunner-cache/**", "**/.loadrunner-uploads/**"],
     },
   },
   build: {
