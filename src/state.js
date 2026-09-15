@@ -37,6 +37,9 @@ export const state = {
     tpsDetail: [],
     siteScopeCpu: [],
     siteScopeMemory: [],
+    lgCpu: [],
+    lgMemory: [],
+    lgDisk: [],
   },
   seriesCountByType: {},
   appliedStart: 0,
@@ -55,6 +58,7 @@ export const state = {
     tpsDetail: { key: "name", dir: "asc" },
     siteScopeCpu: { key: "host", dir: "asc" },
     siteScopeMemory: { key: "host", dir: "asc" },
+    lgHealth: { key: "host", dir: "asc" },
   },
 };
 

@@ -24,13 +24,16 @@ const DUCKDB_THREADS = Number(process.env.LR_DUCKDB_THREADS) || 0;
 const MAX_POINTS_PER_SERIES = 600;
 const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
 const SITESCOPE_METRIC_PATTERN = /\/CPU\/utilization$|\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
+// Naikkan setiap kali isi ingest berubah (graph baru, filter baris), supaya cache lama di-ingest
+// ulang otomatis; fingerprint file source saja tidak tahu logic ingest berubah.
+const INGEST_VERSION = 2;
 
 function cacheKey(resultDir) {
   return createHash("sha256").update(path.resolve(resultDir)).digest("hex").slice(0, 24);
 }
 
 function dashboardGraph(graph) {
-  return ["es_tr_runtime_vusers", "es_tr_tprange_pass", "es_tr_response_time", "Web_Connections_Per_Second"].includes(graph.type)
+  return ["es_tr_runtime_vusers", "es_tr_tprange_pass", "es_tr_response_time", "Web_Connections_Per_Second", "es_tr_lg_monitoring"].includes(graph.type)
     || /fail/i.test(graph.type ?? "")
     || graph.type === "SiteScope";
 }
@@ -49,7 +52,7 @@ async function fingerprint(resultDir) {
       return `${file}:missing`;
     }
   }));
-  return createHash("sha256").update(parts.sort().join("\n")).digest("hex");
+  return createHash("sha256").update([`ingest-version:${INGEST_VERSION}`, ...parts.sort()].join("\n")).digest("hex");
 }
 
 // DuckDB default-nya memakai sampai 80% RAM mesin, yang menyisakan terlalu sedikit memori untuk
@@ -214,8 +217,9 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
         -- SiteScope is already curated to a small set of CPU/Memory hosts at ingestion time
         -- (see SITESCOPE_METRIC_PATTERN), so it doesn't have the cardinality-explosion problem
         -- transaction graphs do — never cap it, always show every host per the applied filter.
+        -- Load generator monitoring is the same shape (3 metrics per injector), so it's exempt too.
         SELECT graph_type, measurement_id FROM ranked
-        WHERE graph_type = 'SiteScope'
+        WHERE graph_type IN ('SiteScope', 'es_tr_lg_monitoring')
            OR rnk <= $maxSeriesPerGraph
            OR (graph_type = $focusGraphType AND measurement_id = $focusMeasurementId)
       )

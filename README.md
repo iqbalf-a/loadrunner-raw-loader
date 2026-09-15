@@ -35,6 +35,9 @@ D:\transfer-kantor\RawResults_12
 - **VUsers Overall** — grafik running vusers sepanjang waktu skenario.
 - **Response Time By Transaction** — grafik multi-line per transaksi.
 - **SiteScope CPU & Memory** — grafik dan tabel min/avg/max per host (mendukung UNIXRES dan WINRES).
+- **Load Generator Health** — CPU, Memory, Disk (%) tiap load generator dari graph
+  `es_tr_lg_monitoring`: grafik per metrik dan tabel Avg/Max per host. Status "Periksa" kalau Max CPU
+  atau Memory &ge; 80%, tanda injector sendiri bisa jadi bottleneck.
 - **Errors** — grafik jumlah error per bucket (per script) dan tabel error per script + kode + pesan
   (count, jumlah vuser, injector, first/last), dibaca dari `SqliteDb.db`. Path DB diisi terpisah
   di panel (file atau folder, bisa tanpa load result); kalau kosong dicari dari folder result. Filter by script, error

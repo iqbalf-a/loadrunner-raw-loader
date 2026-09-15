@@ -31,6 +31,7 @@
         <li><a href="#section-tps-overall-chart" data-nav-target="section-tps-overall-chart" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Overall</a></li>
         <li><a href="#section-infra-cpu" data-nav-target="section-infra-cpu" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">CPU Utilization</a></li>
         <li><a href="#section-infra-memory" data-nav-target="section-infra-memory" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Memory Utilization</a></li>
+        <li><a href="#section-lg-health" data-nav-target="section-lg-health" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator Health</a></li>
         <li><a href="#section-errors" data-nav-target="section-errors" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Errors</a></li>
       </ul>
       <div class="px-5 py-4.5 border-t border-(--line)">
@@ -345,6 +346,47 @@
                   <tbody id="siteScopeMemoryBody"></tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Load Generator Health (raw result: es_tr_lg_monitoring) ── -->
+        <section id="section-lg-health" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Load Generator Health (Chart + Table)</h2>
+          <div class="panel overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Load Generator Summary (Table)</span>
+              <span class="muted normal-case">Status "Periksa" jika Max CPU atau Memory &ge; 80%</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table data-table="lgHealth" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="host">Load Generator <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="status">Status <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="cpuAvg">CPU Avg (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="cpuMax">CPU Max (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="memoryAvg">Memory Avg (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="memoryMax">Memory Max (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="diskAvg">Disk Avg (%) <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="diskMax">Disk Max (%) <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="lgHealthBody"></tbody>
+              </table>
+            </div>
+
+            <div class="chart-panel" data-chart-selector="lgCpu">
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">Load Generator CPU Usage % (Chart)</div>
+              <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="lgCpuChart" class="block w-full h-full"></canvas></div>
+            </div>
+            <div class="chart-panel" data-chart-selector="lgMemory">
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">Load Generator Memory Usage % (Chart)</div>
+              <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="lgMemoryChart" class="block w-full h-full"></canvas></div>
+            </div>
+            <div class="chart-panel" data-chart-selector="lgDisk">
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">Load Generator Disk Usage % (Chart)</div>
+              <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="lgDiskChart" class="block w-full h-full"></canvas></div>
             </div>
           </div>
         </section>

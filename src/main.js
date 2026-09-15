@@ -8,6 +8,7 @@ import {
 import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
 import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
+import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
 
 const SERIES_MAX = 30;
@@ -62,6 +63,10 @@ const els = {
   siteScopeMemoryChart: document.getElementById("siteScopeMemoryChart"),
   siteScopeCpuBody: document.getElementById("siteScopeCpuBody"),
   siteScopeMemoryBody: document.getElementById("siteScopeMemoryBody"),
+  lgCpuChart: document.getElementById("lgCpuChart"),
+  lgMemoryChart: document.getElementById("lgMemoryChart"),
+  lgDiskChart: document.getElementById("lgDiskChart"),
+  lgHealthBody: document.getElementById("lgHealthBody"),
   groupFilter: document.getElementById("groupFilter"),
   applyGroupFilterBtn: document.getElementById("applyGroupFilterBtn"),
   resetGroupFilterBtn: document.getElementById("resetGroupFilterBtn"),
@@ -189,7 +194,8 @@ function renderCharts(transactions, start, end) {
   );
   renderTpsCharts(start, end);
   renderSiteScopeSection(els, start, end, applySelection);
-  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory"].forEach(refreshExpandedChartSelector);
+  renderLgHealthSection(els, start, end, applySelection);
+  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach(refreshExpandedChartSelector);
 }
 
 const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
@@ -629,7 +635,7 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   state[rowsField] = payload.rows;
 }
 
-["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory"].forEach((key) => {
+["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach((key) => {
   const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
   const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
   if (key === "responseTime") {
