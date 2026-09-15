@@ -13,7 +13,7 @@ server untuk dipakai banyak orang) ada di branch `main` dan dipelihara penulis.
 
 ## Requirement
 
-- Node.js 18 atau lebih baru.
+- Node.js 18 atau lebih baru. Panel **Errors** butuh Node.js 22.5+ (memakai `node:sqlite` bawaan).
 
 ## Cara menjalankan dashboard
 
@@ -35,6 +35,11 @@ D:\transfer-kantor\RawResults_12
 - **VUsers Overall** — grafik running vusers sepanjang waktu skenario.
 - **Response Time By Transaction** — grafik multi-line per transaksi.
 - **SiteScope CPU & Memory** — grafik dan tabel min/avg/max per host (mendukung UNIXRES dan WINRES).
+- **Errors** — grafik jumlah error per bucket (per script) dan tabel error per script + kode + pesan
+  (count, jumlah vuser, injector, first/last), dibaca dari `SqliteDb.db`. Path DB diisi terpisah
+  di panel (file atau folder, bisa tanpa load result); kalau kosong dicari dari folder result. Filter by script, error
+  code, teks pesan (`%` sebagai wildcard), dan rentang waktu `HH:MM:SS` opsional yang terpisah dari
+  filter waktu dashboard.
 - **Filter waktu** — batasi analisis ke rentang `HH:MM:SS` tertentu.
 - **Filter group name** — filter tabel transaksi dan TPS berdasarkan group name dengan logika LIKE (`%mcm%`).
 - **Kolom Group** — nama group (lowercase) tampil di tabel Transaction Summary dan TPS.
@@ -87,6 +92,7 @@ node .\loadrunner-raw-loader.js "D:\transfer-kantor\RawResults_12" --json --out 
 | `sum_data\sum_dat.ini` | Mapping graph dan measurement |
 | `sum_data\graph_*.dat` | Data graph agregat (response time, TPS, vusers, dll.) |
 | `offline.dat` + `offl_*.def` | Data SiteScope (CPU, memory) |
+| `SqliteDb.db` | Error vuser dan Controller. Dicari di folder result, lalu di folder induknya (`..\SqliteDb.db` atau `..\SqliteDb.db\SqliteDb.db`). Dibaca dari salinan di `.loadrunner-cache`, file aslinya tidak diubah. |
 
 ## Build untuk production / offline
 

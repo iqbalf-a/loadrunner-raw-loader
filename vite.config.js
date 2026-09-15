@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import { createConsoleSummary } from "./loadrunner-raw-loader.js";
 import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryResponseTimeSeries, queryTpsSeries, queryTpsDetailSummary, queryTpsDetailSeries, queryTpsOverall } from "./loadrunner-duckdb-cache.js";
+import { queryErrors } from "./loadrunner-errors.js";
 
 function parseExtraNames(url) {
   const raw = url.searchParams.get("extraNames");
@@ -141,6 +142,30 @@ export default defineConfig({
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "",
               extraNames: parseExtraNames(url),
+            }));
+          } catch (error) {
+            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+          }
+        });
+        server.middlewares.use("/api/errors", async (req, res) => {
+          try {
+            const url = new URL(req.url ?? "", "http://127.0.0.1");
+            const session = url.searchParams.get("session");
+            const cached = session
+              ? JSON.parse(await (await import("node:fs/promises")).readFile(new URL(`./.loadrunner-cache/${session}.json`, import.meta.url), "utf8"))
+              : null;
+            const optionalNumber = (name) => {
+              const raw = url.searchParams.get(name);
+              return raw === null || raw === "" ? undefined : Number(raw);
+            };
+            sendJson(res, 200, await queryErrors(cached, {
+              start: optionalNumber("start"),
+              end: optionalNumber("end"),
+              granularity: optionalNumber("granularity"),
+              scriptId: optionalNumber("script"),
+              errorCode: optionalNumber("code"),
+              message: url.searchParams.get("message") || "",
+              dbPath: url.searchParams.get("dbPath") || "",
             }));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });

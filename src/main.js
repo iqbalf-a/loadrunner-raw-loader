@@ -8,6 +8,7 @@ import {
 import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
 import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
+import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
 
 const SERIES_MAX = 30;
 
@@ -114,6 +115,7 @@ function applyTheme(theme) {
   els.themeToggle.textContent = theme === "dark" ? "Light" : "Dark";
   localStorage.setItem("loadrunnerTheme", theme);
   if (state.data) renderAll();
+  else renderErrors();
 }
 
 function toggleTheme() {
@@ -232,6 +234,7 @@ function renderAll() {
   renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
   renderTpsSummaryPanels();
   renderCharts(transactions, start, end);
+  renderErrors();
   els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
 }
 
@@ -331,6 +334,7 @@ async function loadResult() {
     state.appliedEnd = duration;
     state.appliedTpsGranularity = autoGranularitySeconds(duration);
     els.tpsGranularity.value = String(state.appliedTpsGranularity);
+    resetErrorFilter();
     await refreshDashboardData();
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
     renderAll();
@@ -441,6 +445,7 @@ async function refreshDashboardData() {
   els.seriesCountTps.textContent = capHint(tpsSeries.total ?? 0);
   els.seriesCountTpsApi.textContent = capHint(tpsApiSeries.total ?? 0);
   els.seriesCountTpsDetail.textContent = capHint(tpsDetailSeries.total ?? 0);
+  await refreshErrors();
 }
 
 function applyGroupFilter() {
@@ -556,6 +561,7 @@ function initSortableTables() {
     state.sort[tableKey] = { key: sortKey, dir };
     updateSortIndicators();
     if (state.data) renderAll();
+    else if (tableKey === "errors") renderErrors();
     refreshOpenModals();
   });
 }

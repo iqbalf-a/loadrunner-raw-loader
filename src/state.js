@@ -43,7 +43,11 @@ export const state = {
   appliedEnd: 0,
   appliedTpsGranularity: DEFAULT_GRAPH_GRANULARITY_SECONDS,
   groupFilter: "",
+  errors: null,
+  errorDbPath: "",
+  errorFilter: { scriptId: "", code: "", message: "", start: null, end: null },
   sort: {
+    errors: { key: "count", dir: "desc" },
     tx: { key: "name", dir: "asc" },
     txRps: { key: "name", dir: "asc" },
     tpsSummary: { key: "name", dir: "asc" },

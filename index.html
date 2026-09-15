@@ -31,6 +31,7 @@
         <li><a href="#section-tps-overall-chart" data-nav-target="section-tps-overall-chart" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Overall</a></li>
         <li><a href="#section-infra-cpu" data-nav-target="section-infra-cpu" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">CPU Utilization</a></li>
         <li><a href="#section-infra-memory" data-nav-target="section-infra-memory" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Memory Utilization</a></li>
+        <li><a href="#section-errors" data-nav-target="section-errors" data-nav-type="mixed" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Errors</a></li>
       </ul>
       <div class="px-5 py-4.5 border-t border-(--line)">
         <button
@@ -344,6 +345,68 @@
                   <tbody id="siteScopeMemoryBody"></tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Errors (SqliteDb.db) ── -->
+        <section id="section-errors" class="app-section mb-8.5">
+          <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Errors (Chart + Table)</h2>
+          <div class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
+            <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+              <span>Errors (Chart + Table)</span>
+              <span class="muted normal-case">errors per bucket <span id="errorGranularityLabel"></span></span>
+              <span id="errorRowsLabel" class="muted normal-case"></span>
+            </div>
+            <div class="flex flex-wrap items-end gap-2.5 px-4 pt-2.5">
+              <div class="flex-1 min-w-80">
+                <label for="errorDbPath" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">SqliteDb.db path (file atau folder)</label>
+                <input id="errorDbPath" placeholder="C:\path\to\SqliteDb.db  (kosong = cari dari folder result)" spellcheck="false" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+              </div>
+              <button id="loadErrorDbBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Load Errors</button>
+            </div>
+            <div class="flex flex-wrap items-end gap-2.5 px-4 py-2.5 border-b border-(--line)">
+              <div class="min-w-55">
+                <label for="errorScriptFilter" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Script</label>
+                <select id="errorScriptFilter" class="w-full h-7.5 px-1.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px]" style="font-family: var(--font-mono);"><option value="">All</option></select>
+              </div>
+              <div class="min-w-55" style="max-width: 420px;">
+                <label for="errorCodeFilter" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Error Code</label>
+                <select id="errorCodeFilter" class="w-full h-7.5 px-1.5 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px]" style="font-family: var(--font-mono);"><option value="">All</option></select>
+              </div>
+              <div class="flex-1 min-w-55">
+                <label for="errorMessageFilter" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Pesan Mengandung</label>
+                <input id="errorMessageFilter" type="text" placeholder="HTTP Status-Code=500" spellcheck="false" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+              </div>
+              <div style="width: 96px;">
+                <label for="errorStartTime" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Start</label>
+                <input id="errorStartTime" placeholder="All" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+              </div>
+              <div style="width: 96px;">
+                <label for="errorEndTime" class="block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">End</label>
+                <input id="errorEndTime" placeholder="All" inputmode="numeric" class="w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]" style="font-family: var(--font-mono);">
+              </div>
+              <button id="applyErrorFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
+              <button id="resetErrorFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
+            </div>
+            <div id="errorInfo" class="px-4 pt-2 text-[11px] text-(--chart-text) break-all" style="font-family: var(--font-mono);">Isi path SqliteDb.db lalu klik Load Errors, atau load result untuk mencarinya otomatis.</div>
+            <div class="chart-wrap h-[320px] px-4.5 pt-2.5 pb-3.5"><canvas id="errorsChart" class="block w-full h-full"></canvas></div>
+            <div class="overflow-auto max-h-[560px]">
+              <table data-table="errors" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
+                <thead>
+                  <tr>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="scriptName">Script <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="errorCode">Code <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="message">Message <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="count">Count <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="vusers">VUsers <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-left text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="injectors">Injector <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="firstSeconds">First <span class="sort-indicator text-(--signal)"></span></th>
+                    <th class="px-3.5 py-2.5 border-b border-(--line) text-right text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="lastSeconds">Last <span class="sort-indicator text-(--signal)"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="errorsBody"></tbody>
+              </table>
             </div>
           </div>
         </section>
