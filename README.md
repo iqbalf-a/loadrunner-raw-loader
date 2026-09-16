@@ -39,7 +39,10 @@ D:\transfer-kantor\RawResults_12
   `es_tr_lg_monitoring`: grafik per metrik dan tabel Avg/Max per host. Status "Periksa" kalau Max CPU
   atau Memory &ge; 80%, tanda injector sendiri bisa jadi bottleneck.
 - **Errors** — grafik jumlah error per bucket (per script) dan tabel error per script + kode + pesan
-  (count, jumlah vuser, injector, first/last), dibaca dari `SqliteDb.db`. Path DB diisi terpisah
+  (count, jumlah vuser, injector, first/last), dibaca dari `SqliteDb.db`. Kolom **API Code** berisi
+  status HTTP aplikasi (500, 400, 409) yang diambil dari teks pesan, terpisah dari kolom **Code**
+  yang berisi kode error LoadRunner. Kolom **API** berisi endpoint yang gagal (path dari URL di
+  pesan, tanpa host dan query string; URL lengkapnya muncul sebagai tooltip). Path DB diisi terpisah
   di panel (file atau folder, bisa tanpa load result); kalau kosong dicari dari folder result. Filter by script, error
   code, teks pesan (`%` sebagai wildcard), dan rentang waktu `HH:MM:SS` opsional yang terpisah dari
   filter waktu dashboard.

@@ -103,12 +103,14 @@ function cell(content, cls = "text-right whitespace-nowrap", title = "") {
 
 function renderRows(rows) {
   if (!rows.length) {
-    return `<tr><td colspan="8" class="px-3.5 py-3 text-left muted">Tidak ada error untuk filter ini.</td></tr>`;
+    return `<tr><td colspan="10" class="px-3.5 py-3 text-left muted">Tidak ada error untuk filter ini.</td></tr>`;
   }
   return rows.map((row) => `
     <tr class="hover:bg-(--surface) align-top">
       ${cell(escapeHtml(row.scriptName), "text-left whitespace-nowrap")}
       ${cell(row.errorCode, "text-right whitespace-nowrap fail")}
+      ${cell(row.apiCode ?? "-", `text-right whitespace-nowrap ${row.apiCode ? "fail" : "muted"}`)}
+      ${cell(escapeHtml(row.apiPath ?? "-"), `text-left min-w-64 break-all ${row.apiPath ? "" : "muted"}`, row.apiUrl ?? "")}
       ${cell(escapeHtml(row.message.trim()), "text-left min-w-90 break-words whitespace-pre-line")}
       ${cell(fmtNumber(row.count))}
       ${cell(fmtNumber(row.vusers), "text-right whitespace-nowrap muted")}

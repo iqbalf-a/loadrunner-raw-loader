@@ -116,6 +116,26 @@ function elapsedBase(db, scenarioStartTime) {
 
 const ELAPSED = "(CAST(strftime('%s', m.Time) AS INTEGER) - :base)";
 
+// Kode error LoadRunner (-26611) cuma bilang "request gagal"; status HTTP dari aplikasi yang diuji
+// (500, 400, 409) ada di dalam teks pesannya, jadi diangkat jadi kolom sendiri.
+function apiErrorCode(message) {
+  const match = String(message ?? "").match(/HTTP(?:\/\d(?:\.\d)?)?\s*(?:Status-Code\s*=\s*|Status\s*|)(\d{3})\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+// Endpoint yang gagal ada di dalam teks pesan sebagai URL penuh. Yang ditampilkan path-nya saja:
+// host-nya berganti-ganti antar node (.85/.86) dan query string bisa berisi SQL panjang.
+function apiEndpoint(message) {
+  const match = String(message ?? "").match(/https?:\/\/[^\s"']+/i);
+  if (!match) return { apiUrl: null, apiPath: null };
+  const apiUrl = match[0].replace(/[.,)]+$/, "");
+  try {
+    return { apiUrl, apiPath: new URL(apiUrl).pathname || "/" };
+  } catch {
+    return { apiUrl, apiPath: apiUrl.replace(/^https?:\/\/[^/]*/i, "").split("?")[0] || "/" };
+  }
+}
+
 // node:sqlite menolak named parameter yang tidak muncul di SQL, jadi tiap query hanya diberi
 // parameter yang benar-benar dipakainya.
 function usedParams(sql, values) {
@@ -187,12 +207,13 @@ export async function queryErrors(session, options = {}) {
 
   progress.phase("Mengelompokkan error...", 65, 85);
   const groupBy = "GROUP BY m.Script_ID, m.Error_Code, m.Message_ID";
-  const rows = all(db, `SELECT ${SCRIPT_NAME} AS scriptName, m.Error_Code AS errorCode,
+  const groupedRows = all(db, `SELECT ${SCRIPT_NAME} AS scriptName, m.Error_Code AS errorCode,
       COALESCE(e.Message_String, '') AS message, COUNT(*) AS count, COUNT(DISTINCT m.Vuser_ID) AS vusers,
       group_concat(DISTINCT i.Injector_Name) AS injectors,
       MIN(${ELAPSED}) AS firstSeconds, MAX(${ELAPSED}) AS lastSeconds
     ${FROM_MAIN} ${whereSql} ${groupBy}
     ORDER BY count DESC LIMIT ${ROWS_LIMIT}`, values);
+  const rows = groupedRows.map((row) => ({ ...row, apiCode: apiErrorCode(row.message), ...apiEndpoint(row.message) }));
   const rowsTotal = get(db, `SELECT COUNT(*) AS n FROM (SELECT 1 ${FROM_MAIN} ${whereSql} ${groupBy})`, values).n;
 
   const series = all(db, `SELECT CAST(${ELAPSED} / :granularity AS INTEGER) * :granularity AS elapsedSeconds,
