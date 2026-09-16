@@ -313,7 +313,10 @@
           <h2 class="text-[13px] font-bold tracking-[0.02em] mb-2.5 pb-2 border-b border-(--line)">Infrastructure</h2>
           <div class="panel overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
             <div id="section-infra-cpu" class="chart-panel" data-chart-selector="siteScopeCpu">
-              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope CPU Overall (Chart + Table)</div>
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-b border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+                <span>SiteScope CPU Overall (Chart + Table)</span>
+                <button id="showAllSiteScopeCpuBtn" type="button" hidden class="panel-action-btn h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+              </div>
               <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeCpuChart" class="block w-full h-full"></canvas></div>
               <div class="overflow-x-auto">
                 <table data-table="siteScopeCpu" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">
@@ -331,7 +334,10 @@
             </div>
 
             <div id="section-infra-memory" class="chart-panel" data-chart-selector="siteScopeMemory">
-              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">SiteScope Memory Overall (Chart + Table)</div>
+              <div class="panel-title flex items-center min-h-9 px-4 py-2 border-y border-(--line) text-[11px] font-medium text-(--chart-text) tracking-[0.09em] uppercase gap-2.5" style="font-family: var(--font-mono);">
+                <span>SiteScope Memory Overall (Chart + Table)</span>
+                <button id="showAllSiteScopeMemoryBtn" type="button" hidden class="panel-action-btn h-6 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" style="font-family: var(--font-mono);">Show All</button>
+              </div>
               <div class="chart-wrap h-[235px] px-4.5 pt-2.5 pb-3.5"><canvas id="siteScopeMemoryChart" class="block w-full h-full"></canvas></div>
               <div class="overflow-x-auto">
                 <table data-table="siteScopeMemory" class="w-full border-collapse text-[12.5px]" style="font-family: var(--font-mono);">

@@ -100,13 +100,27 @@ const TPS_MODE_COLUMNS = {
     ["name", "BP Group", "left"],
     ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
   ],
+  // SiteScope CPU/Memory: satu baris per host, angkanya persen — bukan TPS, jadi tanpa suffix granularity.
+  sitescope: [
+    ["host", "Host", "left"],
+    ["min", "Min (%)"], ["avg", "Avg (%)"], ["max", "Max (%)"],
+  ],
 };
 
 // Which field the group-filter wildcard matches against for a given mode: for transaction/api rows
 // it's the resolved groupName column, but detail rows ARE already one-row-per-group, so the name
 // itself is the group.
+// null berarti mode ini tidak ikut filter group name: baris SiteScope adalah host infrastruktur,
+// bukan transaksi, jadi tidak punya group script sama sekali.
 function groupFilterField(mode) {
+  if (mode === "sitescope") return null;
   return mode === "detail" ? "name" : "groupName";
+}
+
+function filterByGroup(rows, mode) {
+  const field = groupFilterField(mode);
+  const re = field && state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
+  return re ? rows.filter((row) => re.test(row[field] ?? "")) : rows;
 }
 
 // Min/Max TPS are graph readings (lowest/highest plotted bucket), so they move with bucket width
@@ -146,6 +160,10 @@ const TPS_CELL_RENDERERS = {
   avgTps: (tx) => tpsCell(tx.avgTps.toFixed(3)),
   maxTps: (tx) => tpsCell(tx.maxTps.toFixed(3)),
   points: (tx) => tpsCell(fmtNumber(tx.points), "right", "muted"),
+  host: (row) => tpsCell(escapeHtml(row.host), "left"),
+  min: (row) => tpsCell(row.min.toFixed(3)),
+  avg: (row) => tpsCell(row.avg.toFixed(3)),
+  max: (row) => tpsCell(row.max.toFixed(3)),
 };
 
 export function renderTpsSummaryRows(rows, mode = "transaction") {
@@ -158,18 +176,14 @@ export function renderTpsSummaryRows(rows, mode = "transaction") {
 }
 
 export function renderTpsSummaryTable(rows, tbody, showAllBtn, tableKey, mode = "transaction") {
-  const field = groupFilterField(mode);
-  const re = state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
-  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx[field] ?? "")) : rows, state.sort[tableKey]);
+  const filtered = sortRows(filterByGroup(rows, mode), state.sort[tableKey]);
   tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode);
   showAllBtn.hidden = filtered.length <= TRANSACTION_SUMMARY_LIMIT;
   showAllBtn.textContent = `Show All (${filtered.length})`;
 }
 
 export function renderTpsModalContent(els, rows, label, tableKey, mode = "transaction") {
-  const field = groupFilterField(mode);
-  const re = state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
-  const filtered = sortRows(re ? rows.filter((tx) => re.test(tx[field] ?? "")) : rows, state.sort[tableKey]);
+  const filtered = sortRows(filterByGroup(rows, mode), state.sort[tableKey]);
   els.tpsModalTitle.textContent = `${label} (${filtered.length})`;
   renderTpsSummaryHead(els.tpsModalHead, mode);
   els.tpsModalBody.innerHTML = renderTpsSummaryRows(filtered, mode);

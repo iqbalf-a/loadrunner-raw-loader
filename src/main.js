@@ -64,6 +64,8 @@ const els = {
   siteScopeMemoryChart: document.getElementById("siteScopeMemoryChart"),
   siteScopeCpuBody: document.getElementById("siteScopeCpuBody"),
   siteScopeMemoryBody: document.getElementById("siteScopeMemoryBody"),
+  showAllSiteScopeCpuBtn: document.getElementById("showAllSiteScopeCpuBtn"),
+  showAllSiteScopeMemoryBtn: document.getElementById("showAllSiteScopeMemoryBtn"),
   lgCpuChart: document.getElementById("lgCpuChart"),
   lgMemoryChart: document.getElementById("lgMemoryChart"),
   lgDiskChart: document.getElementById("lgDiskChart"),
@@ -544,6 +546,8 @@ function getTableRows(tableKey) {
     case "tpsSummary": return state.tpsSummary;
     case "tpsSummaryApi": return state.tpsSummaryApi;
     case "tpsDetail": return state.tpsDetail;
+    case "siteScopeCpu": return state.siteScopeCpuRows;
+    case "siteScopeMemory": return state.siteScopeMemoryRows;
     default: return [];
   }
 }
@@ -602,6 +606,8 @@ els.transactionModal.addEventListener("click", (event) => {
 els.showAllTpsTransactionsBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummary, "TPS (Chart + Table)", "tpsSummary", "transaction"));
 els.showAllTpsApiBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummaryApi, "RPS (Chart + Table)", "tpsSummaryApi", "api"));
 els.showAllTpsDetailBtn.addEventListener("click", () => openTpsModal(els, state.tpsDetail, "TPS Detail (Chart + Table)", "tpsDetail", "detail"));
+els.showAllSiteScopeCpuBtn.addEventListener("click", () => openTpsModal(els, state.siteScopeCpuRows, "SiteScope CPU Overall", "siteScopeCpu", "sitescope"));
+els.showAllSiteScopeMemoryBtn.addEventListener("click", () => openTpsModal(els, state.siteScopeMemoryRows, "SiteScope Memory Overall", "siteScopeMemory", "sitescope"));
 els.closeTpsModalBtn.addEventListener("click", () => closeTpsModal(els));
 els.copyTpsModalBtn.addEventListener("click", () => copyTableRows(els.tpsModalTable, els.copyTpsModalBtn));
 els.tpsModal.addEventListener("click", (event) => {

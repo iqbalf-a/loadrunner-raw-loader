@@ -1,5 +1,5 @@
 import { percentile } from "./format.js";
-import { state, graphByType, measurementName, inRange, sortRows } from "./state.js";
+import { state, graphByType, measurementName, inRange, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
 import { drawMultiLineChart } from "./charts.js";
 
 export function hostFromSiteScopeName(name) {
@@ -43,7 +43,7 @@ export function siteScopeSeries(pattern, start, end, colors) {
   }));
 }
 
-export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey) {
+export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey, showAllBtn, stateKey) {
   const valuesByHost = new Map();
 
   for (const row of siteScopeRows(pattern, start, end)) {
@@ -54,8 +54,14 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
   }
 
   const hostRows = [...valuesByHost.entries()].map(([host, values]) => ({ host, ...summarizeValues(values) }));
+  // Disimpan supaya modal "Show All" memakai baris yang sama dengan tabel panel.
+  if (stateKey) state[stateKey] = hostRows;
   const sorted = sortRows(hostRows, state.sort[tableKey]);
-  target.innerHTML = sorted.map((row) => `
+  if (showAllBtn) {
+    showAllBtn.hidden = sorted.length <= TRANSACTION_SUMMARY_LIMIT;
+    showAllBtn.textContent = `Show All (${sorted.length})`;
+  }
+  target.innerHTML = sorted.slice(0, showAllBtn ? TRANSACTION_SUMMARY_LIMIT : sorted.length).map((row) => `
       <tr class="hover:bg-(--surface)">
         <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${row.host}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.min.toFixed(3)}</td>
@@ -71,6 +77,6 @@ export function renderSiteScopeSection(els, start, end, applySelection) {
   const memorySeries = siteScopeSeries(/\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, colors);
   drawMultiLineChart(els.siteScopeCpuChart, applySelection("siteScopeCpu", cpuSeries), start, end);
   drawMultiLineChart(els.siteScopeMemoryChart, applySelection("siteScopeMemory", memorySeries), start, end);
-  renderSiteScopeMetricTable(els.siteScopeCpuBody, /\/CPU\/utilization$/, start, end, "siteScopeCpu");
-  renderSiteScopeMetricTable(els.siteScopeMemoryBody, /\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, "siteScopeMemory");
+  renderSiteScopeMetricTable(els.siteScopeCpuBody, /\/CPU\/utilization$/, start, end, "siteScopeCpu", els.showAllSiteScopeCpuBtn, "siteScopeCpuRows");
+  renderSiteScopeMetricTable(els.siteScopeMemoryBody, /\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, "siteScopeMemory", els.showAllSiteScopeMemoryBtn, "siteScopeMemoryRows");
 }
