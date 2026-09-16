@@ -456,6 +456,17 @@
     </div>
   </div>
 
+  <div id="loadingOverlay" class="loading-overlay" hidden role="status" aria-live="polite">
+    <div class="loading-card">
+      <div id="loadingTitle" class="loading-title">Loading</div>
+      <div class="loading-bar"><div id="loadingBarFill" class="loading-bar-fill"></div></div>
+      <div class="loading-meta">
+        <span id="loadingPhase">Menyiapkan...</span>
+        <span><span id="loadingPercent">0%</span> &middot; <span id="loadingElapsed">0.0s</span></span>
+      </div>
+    </div>
+  </div>
+
   <div id="transactionModal" class="transaction-modal" hidden role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
     <div class="transaction-modal-content">
       <div class="transaction-modal-header">

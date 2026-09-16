@@ -3,6 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { createConsoleSummary } from "./loadrunner-raw-loader.js";
 import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryResponseTimeSeries, queryTpsSeries, queryTpsDetailSummary, queryTpsDetailSeries, queryTpsOverall } from "./loadrunner-duckdb-cache.js";
 import { queryErrors } from "./loadrunner-errors.js";
+import { startProgress, readProgress } from "./progress.js";
 
 function parseExtraNames(url) {
   const raw = url.searchParams.get("extraNames");
@@ -30,25 +31,31 @@ export default defineConfig({
     {
       name: "loadrunner-api",
       configureServer(server) {
+        server.middlewares.use("/api/progress", (req, res) => {
+          const url = new URL(req.url ?? "", "http://127.0.0.1");
+          sendJson(res, 200, readProgress(url.searchParams.get("token") ?? ""));
+        });
         server.middlewares.use("/api/load", async (req, res) => {
+          const url = new URL(req.url ?? "", "http://127.0.0.1");
+          const progress = startProgress(url.searchParams.get("progress") ?? "");
           try {
-            const url = new URL(req.url ?? "", "http://127.0.0.1");
             const resultPath = url.searchParams.get("path");
             if (!resultPath) {
               sendJson(res, 400, { error: "Parameter path wajib diisi." });
               return;
             }
 
-            const cached = await openLoadRunnerCache(resultPath);
+            const cached = await openLoadRunnerCache(resultPath, { progress });
+            progress.done();
             sendJson(res, 200, {
               session: cached.key,
               result: cached.result,
               cache: { rowCount: cached.rowCount },
             });
           } catch (error) {
-            sendJson(res, 500, {
-              error: error instanceof Error ? error.message : String(error),
-            });
+            const message = error instanceof Error ? error.message : String(error);
+            progress.fail(message);
+            sendJson(res, 500, { error: message });
           }
         });
         server.middlewares.use("/api/dashboard", async (req, res) => {
@@ -148,8 +155,9 @@ export default defineConfig({
           }
         });
         server.middlewares.use("/api/errors", async (req, res) => {
+          const url = new URL(req.url ?? "", "http://127.0.0.1");
+          const progress = startProgress(url.searchParams.get("progress") ?? "");
           try {
-            const url = new URL(req.url ?? "", "http://127.0.0.1");
             const session = url.searchParams.get("session");
             const cached = session
               ? JSON.parse(await (await import("node:fs/promises")).readFile(new URL(`./.loadrunner-cache/${session}.json`, import.meta.url), "utf8"))
@@ -158,7 +166,7 @@ export default defineConfig({
               const raw = url.searchParams.get(name);
               return raw === null || raw === "" ? undefined : Number(raw);
             };
-            sendJson(res, 200, await queryErrors(cached, {
+            const payload = await queryErrors(cached, {
               start: optionalNumber("start"),
               end: optionalNumber("end"),
               granularity: optionalNumber("granularity"),
@@ -166,9 +174,14 @@ export default defineConfig({
               errorCode: optionalNumber("code"),
               message: url.searchParams.get("message") || "",
               dbPath: url.searchParams.get("dbPath") || "",
-            }));
+              progress,
+            });
+            progress.done();
+            sendJson(res, 200, payload);
           } catch (error) {
-            sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+            const message = error instanceof Error ? error.message : String(error);
+            progress.fail(message);
+            sendJson(res, 500, { error: message });
           }
         });
         server.middlewares.use("/api/tps-series", async (req, res) => {

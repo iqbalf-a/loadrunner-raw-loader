@@ -1,6 +1,7 @@
 import { formatHms, formatClockAt, parseHms, escapeHtml, fmtNumber } from "./format.js";
 import { state, sortRows } from "./state.js";
 import { drawMultiLineChart } from "./charts.js";
+import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
 
 const COLORS = ["#ff416d", "#2f7df6", "#00bf8f", "#8b5cf6", "#11c5e5", "#a56b00"];
 // Di atas batas ini bucket kosong tidak diisi nol, supaya chart tidak menggambar puluhan ribu titik.
@@ -35,7 +36,7 @@ export function resetErrorFilter() {
   for (const input of [els.script, els.code, els.message, els.start, els.end]) input.value = "";
 }
 
-export async function refreshErrors() {
+export async function refreshErrors(progressToken = "") {
   if (!state.data && !state.errorDbPath) return;
   const filter = state.errorFilter;
   const params = new URLSearchParams();
@@ -45,6 +46,7 @@ export async function refreshErrors() {
     params.set("granularity", String(state.appliedTpsGranularity));
   }
   if (state.errorDbPath) params.set("dbPath", state.errorDbPath);
+  if (progressToken) params.set("progress", progressToken);
   if (filter.scriptId) params.set("script", filter.scriptId);
   if (filter.code) params.set("code", filter.code);
   if (filter.message) params.set("message", filter.message);
@@ -185,10 +187,22 @@ async function loadErrorDatabase() {
   state.errorDbPath = els.dbPath.value.trim().replace(/^"(.*)"$/, "$1");
   els.dbPath.value = state.errorDbPath;
   resetErrorFilter();
+  if (!state.data && !state.errorDbPath) {
+    setInfo("Isi path SqliteDb.db lalu klik Load Errors, atau load result untuk mencarinya otomatis.", true);
+    return;
+  }
   els.loadBtn.disabled = true;
+  const progressToken = newProgressToken();
+  startLoadingOverlay("Load Errors", progressToken);
+  setInfo("Loading errors...");
   try {
-    await applyErrorFilter();
+    await refreshErrors(progressToken);
+    // Query errors sering selesai sebelum polling progres sempat jalan, jadi bar ditutup di 100%
+    // supaya tidak terlihat berhenti di tengah.
+    setProgress(100, "Selesai");
+    renderErrors();
   } finally {
+    finishLoadingOverlay();
     els.loadBtn.disabled = false;
   }
   try {

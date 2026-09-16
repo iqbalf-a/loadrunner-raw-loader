@@ -1,4 +1,4 @@
-﻿import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
+﻿import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
@@ -194,16 +194,20 @@ function parseSummaryIni(filePath) {
   };
 }
 
-async function parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats) {
+async function parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats, onBytes) {
   const rows = [];
   const statsByMeasurement = new Map();
 
+  const stream = createReadStream(filePath, { encoding: "utf8" });
   const rl = readline.createInterface({
-    input: createReadStream(filePath, { encoding: "utf8" }),
+    input: stream,
     crlfDelay: Infinity,
   });
+  let lineCount = 0;
 
   for await (const line of rl) {
+    // Posisi baca dilapor berkala, bukan tiap baris: file graph terbesar berisi jutaan baris.
+    if ((lineCount += 1) % 20_000 === 0) onBytes?.(stream.bytesRead);
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -275,6 +279,8 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime, inc
     statsByMeasurement.set(measurementId, current);
   }
 
+  onBytes?.(stream.bytesRead);
+
   const stats = [...statsByMeasurement.values()].map((item) => {
     const { values, weightedValues, ...summary } = item;
     return {
@@ -287,17 +293,34 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime, inc
   return { rows, stats };
 }
 
-async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats) {
-  const parsedGraphs = [];
+function fileSizeOrZero(filePath) {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return 0;
+  }
+}
 
-  for (const graph of graphs) {
-    const filePath = path.join(sumDataDir, `graph_${graph.index}.dat`);
+async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats, onProgress) {
+  const parsedGraphs = [];
+  // Progres dihitung dari byte, bukan jumlah file: satu graph response time bisa jauh lebih besar
+  // daripada semua graph lain digabung.
+  const filePaths = graphs.map((graph) => path.join(sumDataDir, `graph_${graph.index}.dat`));
+  const sizes = onProgress ? filePaths.map(fileSizeOrZero) : [];
+  const totalBytes = sizes.reduce((sum, size) => sum + size, 0) || 1;
+  let doneBytes = 0;
+
+  for (const [index, graph] of graphs.entries()) {
+    const filePath = filePaths[index];
     if (!existsSync(filePath)) {
       parsedGraphs.push({ ...graph, dataFile: filePath, rows: [], stats: [] });
       continue;
     }
 
-    const parsed = await parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats);
+    const parsed = await parseGraphData(filePath, measurementsById, scenarioStartTime, includeRows, includeMeasurement, compactRows, includeStats,
+      onProgress && ((bytes) => onProgress((doneBytes + bytes) / totalBytes)));
+    doneBytes += sizes[index] ?? 0;
+    onProgress?.(doneBytes / totalBytes);
     parsedGraphs.push({
       ...graph,
       dataFile: filePath,
@@ -422,6 +445,7 @@ async function loadLoadRunnerResult(resultDir, options = {}) {
     includeMeasurement,
     compactRows,
     includeStats,
+    options.onGraphProgress,
   );
 
   // offline.dat bisa ratusan MB dan hanya dipakai ringkasan CLI; ingest dashboard mengambil

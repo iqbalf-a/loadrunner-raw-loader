@@ -10,6 +10,7 @@ import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, up
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
+import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
 
 const SERIES_MAX = 30;
 
@@ -326,9 +327,12 @@ async function loadResult() {
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
     els.status.textContent = `Loading... ${elapsed}s`;
   }, 100);
+  // Ingest jalan di server, query dashboard di browser: 0-90% dari server, sisanya dari sini.
+  const progressToken = newProgressToken();
+  startLoadingOverlay("Load Result", progressToken, 0.9);
 
   try {
-    const response = await fetch(`/api/load?path=${encodeURIComponent(resultPath)}`);
+    const response = await fetch(`/api/load?path=${encodeURIComponent(resultPath)}&progress=${encodeURIComponent(progressToken)}`);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Load failed");
     localStorage.setItem("loadrunnerLastPath", resultPath);
@@ -341,7 +345,8 @@ async function loadResult() {
     state.appliedTpsGranularity = autoGranularitySeconds(duration);
     els.tpsGranularity.value = String(state.appliedTpsGranularity);
     resetErrorFilter();
-    await refreshDashboardData();
+    setProgress(90, "Query dashboard...");
+    await refreshDashboardData((done, total) => setProgress(90 + (10 * done) / total, `Query dashboard ${done}/${total}...`));
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
     renderAll();
     els.status.textContent += ` | Loaded in ${elapsed}s`;
@@ -350,6 +355,7 @@ async function loadResult() {
     els.status.className = STATUS_ERR;
   } finally {
     clearInterval(timerInterval);
+    finishLoadingOverlay();
     els.loadBtn.disabled = false;
   }
 }
@@ -358,7 +364,7 @@ function extraNamesParam(key) {
   return JSON.stringify(state.chartSelections[key] ?? []);
 }
 
-async function refreshDashboardData() {
+async function refreshDashboardData(onQueryProgress) {
   const { session, result } = state.data;
   const start = state.appliedStart;
   const end = state.appliedEnd || result.scenario.durationSeconds || 0;
@@ -368,11 +374,8 @@ async function refreshDashboardData() {
     end: String(end),
     granularity: String(state.appliedTpsGranularity),
   });
-  const [
-    dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse, tpsSummaryApiResponse,
-    responseTimeResponse, responseTimeApiResponse, tpsSeriesResponse, tpsApiSeriesResponse,
-    tpsDetailSummaryResponse, tpsDetailSeriesResponse, tpsOverallResponse,
-  ] = await Promise.all([
+  let completedQueries = 0;
+  const queries = [
     fetch(`/api/dashboard?${params}`),
     fetch(`/api/transactions?${params}&offset=0&namePrefix=BP`),
     fetch(`/api/transactions?${params}&offset=0&namePrefix=RPS_`),
@@ -385,7 +388,15 @@ async function refreshDashboardData() {
     fetch(`/api/tps-detail-summary?${params}&namePrefix=BP`),
     fetch(`/api/tps-detail-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsDetail"))}`),
     fetch(`/api/tps-overall?${params}&namePrefix=BP`),
-  ]);
+  ];
+  const [
+    dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse, tpsSummaryApiResponse,
+    responseTimeResponse, responseTimeApiResponse, tpsSeriesResponse, tpsApiSeriesResponse,
+    tpsDetailSummaryResponse, tpsDetailSeriesResponse, tpsOverallResponse,
+  ] = await Promise.all(queries.map((query) => query.then((response) => {
+    onQueryProgress?.(completedQueries += 1, queries.length);
+    return response;
+  })));
   const dashboard = await dashboardResponse.json();
   const transactions = await transactionsResponse.json();
   const rpsTransactions = await rpsTransactionsResponse.json();

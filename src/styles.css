@@ -229,6 +229,61 @@ body.transaction-modal-open {
   white-space: nowrap;
 }
 
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--ink) 60%, transparent);
+}
+
+.loading-overlay[hidden] {
+  display: none;
+}
+
+.loading-card {
+  width: min(460px, 100%);
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+}
+
+.loading-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loading-bar {
+  height: 6px;
+  margin: 14px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.loading-bar-fill {
+  width: 0;
+  height: 100%;
+  background: var(--signal);
+  transition: width 180ms linear;
+}
+
+.loading-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .transaction-modal {
   position: fixed;
   inset: 0;

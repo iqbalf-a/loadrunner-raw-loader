@@ -133,9 +133,12 @@ function get(db, sql, values = {}) {
 // session boleh null: panel Errors bisa dipakai hanya dengan path SqliteDb.db, tanpa load result.
 // Tanpa result, elapsed dihitung dari error pertama dan granularity dipilih dari rentang errornya.
 export async function queryErrors(session, options = {}) {
+  const progress = options.progress ?? { phase() {}, set() {} };
+  progress.phase("Mencari SqliteDb.db...", 0, 15);
   const result = session?.result;
   const candidates = options.dbPath ? explicitPaths(options.dbPath) : result ? candidatePaths(result.resultDir) : [];
   if (!candidates.length) throw new Error("Isi path SqliteDb.db, atau load result dulu untuk mencarinya otomatis.");
+  progress.phase("Menyalin database ke cache...", 15, 45);
   const opened = await openErrorDatabase(candidates);
   if (!opened) return { available: false, searched: candidates };
   const { db, source } = opened;
@@ -175,12 +178,14 @@ export async function queryErrors(session, options = {}) {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
+  progress.phase("Menghitung ringkasan error...", 45, 65);
   const totals = get(db, `SELECT COUNT(*) AS errors, COUNT(DISTINCT m.Message_ID) AS messages,
       COUNT(DISTINCT m.Vuser_ID) AS vusers, COUNT(DISTINCT m.Script_ID) AS scripts,
       MIN(${ELAPSED}) AS firstSeconds, MAX(${ELAPSED}) AS lastSeconds
     ${FROM_MAIN} ${whereSql}`, values);
   const granularity = Math.max(1, Math.round(Number(options.granularity) || autoGranularitySeconds(totals.lastSeconds)));
 
+  progress.phase("Mengelompokkan error...", 65, 85);
   const groupBy = "GROUP BY m.Script_ID, m.Error_Code, m.Message_ID";
   const rows = all(db, `SELECT ${SCRIPT_NAME} AS scriptName, m.Error_Code AS errorCode,
       COALESCE(e.Message_String, '') AS message, COUNT(*) AS count, COUNT(DISTINCT m.Vuser_ID) AS vusers,
@@ -195,6 +200,7 @@ export async function queryErrors(session, options = {}) {
     ${FROM_MAIN} ${whereSql}
     GROUP BY elapsedSeconds, m.Script_ID ORDER BY elapsedSeconds`, { ...values, ":granularity": granularity });
 
+  progress.phase("Menyiapkan pilihan filter...", 85, 100);
   // Pilihan dropdown sengaja tidak ikut difilter supaya daftar script/error tetap lengkap.
   const scripts = all(db, `SELECT m.Script_ID AS id, ${SCRIPT_NAME} AS name, COUNT(*) AS count
     FROM Main m LEFT JOIN Scripts s ON s.Script_ID = m.Script_ID

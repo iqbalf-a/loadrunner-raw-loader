@@ -108,14 +108,18 @@ async function queryRows(connection, sql, values = {}) {
   return reader.getRowObjectsJS();
 }
 
-async function appendGraphRows(connection, graph, scenarioStartTime) {
+async function appendGraphRows(connection, graph, scenarioStartTime, onBytes) {
   if (!existsSync(graph.dataFile)) return 0;
   const measurementNameById = new Map(graph.measurements.map((m) => [m.id, m.name]));
   const isSiteScope = graph.type === "SiteScope";
   const appender = await connection.createAppender("rows");
   let rowCount = 0;
-  const input = readline.createInterface({ input: createReadStream(graph.dataFile, { encoding: "utf8" }), crlfDelay: Infinity });
+  const stream = createReadStream(graph.dataFile, { encoding: "utf8" });
+  const input = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  let lineCount = 0;
   for await (const line of input) {
+    // bytesRead dibaca berkala, bukan tiap baris: file graph terbesar berisi jutaan baris.
+    if ((lineCount += 1) % 20_000 === 0) onBytes?.(stream.bytesRead);
     const [measurementId, timestamp, value, count, min, max, stddev] = line.trim().split(/\s+/).map(Number);
     if (![measurementId, timestamp, value, count, min, max, stddev].every(Number.isFinite)) continue;
     if (isSiteScope && !SITESCOPE_METRIC_PATTERN.test(measurementNameById.get(measurementId) ?? "")) continue;
@@ -134,7 +138,16 @@ async function appendGraphRows(connection, graph, scenarioStartTime) {
     rowCount += 1;
   }
   appender.closeSync();
+  onBytes?.(stream.bytesRead);
   return rowCount;
+}
+
+async function fileSize(file) {
+  try {
+    return (await stat(file)).size;
+  } catch {
+    return 0;
+  }
 }
 
 function publicResult(result) {
@@ -151,11 +164,13 @@ function publicResult(result) {
   };
 }
 
-export async function openLoadRunnerCache(resultDir) {
+export async function openLoadRunnerCache(resultDir, options = {}) {
+  const progress = options.progress ?? { phase() {}, set() {} };
   const resolvedResultDir = path.resolve(resultDir);
   const key = cacheKey(resolvedResultDir);
   const databasePath = path.join(CACHE_DIR, `${key}.duckdb`);
   const metadataPath = path.join(CACHE_DIR, `${key}.json`);
+  progress.phase("Memeriksa cache...", 0, 3);
   const currentFingerprint = await fingerprint(resolvedResultDir);
   await mkdir(CACHE_DIR, { recursive: true });
 
@@ -165,7 +180,13 @@ export async function openLoadRunnerCache(resultDir) {
   }
 
   // Reuse the established metadata parser, but avoid retaining every graph point in JS.
-  const parsed = await loadLoadRunnerResult(resolvedResultDir, { includeRows: false, includeStats: false, includeOffline: false });
+  progress.phase("Membaca sum_data...", 3, 55);
+  const parsed = await loadLoadRunnerResult(resolvedResultDir, {
+    includeRows: false,
+    includeStats: false,
+    includeOffline: false,
+    onGraphProgress: (fraction) => progress.set(fraction),
+  });
   const result = publicResult(parsed);
   const { instance, connection } = await openWritableDatabase(databasePath);
   try {
@@ -174,11 +195,21 @@ export async function openLoadRunnerCache(resultDir) {
       graph_type VARCHAR, measurement_id INTEGER, elapsed_seconds DOUBLE,
       value DOUBLE, sample_count DOUBLE, min_value DOUBLE, max_value DOUBLE, stddev DOUBLE
     )`);
+    progress.phase("Ingest ke DuckDB...", 55, 92);
+    const ingestGraphs = parsed.graphs.filter(dashboardGraph);
+    const graphSizes = await Promise.all(ingestGraphs.map((graph) => fileSize(graph.dataFile)));
+    const totalBytes = graphSizes.reduce((sum, size) => sum + size, 0) || 1;
+    let doneBytes = 0;
     let rowCount = 0;
-    for (const graph of parsed.graphs.filter(dashboardGraph)) {
-      rowCount += await appendGraphRows(connection, graph, parsed.scenario.startTime);
+    for (const [index, graph] of ingestGraphs.entries()) {
+      rowCount += await appendGraphRows(connection, graph, parsed.scenario.startTime,
+        (bytes) => progress.set((doneBytes + bytes) / totalBytes));
+      doneBytes += graphSizes[index];
+      progress.set(doneBytes / totalBytes);
     }
+    progress.phase("Membuat index...", 92, 98);
     await connection.run("CREATE INDEX rows_lookup ON rows(graph_type, measurement_id, elapsed_seconds)");
+    progress.phase("Menyimpan metadata cache...", 98, 100);
     const metadata = { key, fingerprint: currentFingerprint, result, rowCount };
     await writeFile(metadataPath, JSON.stringify(metadata), "utf8");
     return metadata;

@@ -47,6 +47,9 @@ D:\transfer-kantor\RawResults_12
 - **Filter group name** — filter tabel transaksi dan TPS berdasarkan group name dengan logika LIKE (`%mcm%`).
 - **Kolom Group** — nama group (lowercase) tampil di tabel Transaction Summary dan TPS.
 - **Timer load** — menampilkan elapsed time saat loading, dan total waktu load setelah selesai.
+- **Loading screen + progress bar** — muncul saat Load Result dan Load Errors, menampilkan persentase
+  dan tahap yang sedang jalan (baca `sum_data`, ingest DuckDB, buat index, query dashboard).
+  Persentasenya dilaporkan backend lewat `/api/progress`, bukan animasi perkiraan.
 - **Dark mode** — toggle dark/light, disimpan di `localStorage`.
 - **Expand panel** — setiap panel grafik bisa di-expand full screen.
 - **Download PNG** — export grafik sebagai file PNG.
