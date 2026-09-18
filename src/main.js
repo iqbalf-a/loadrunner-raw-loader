@@ -5,12 +5,13 @@ import {
   resolveGroup,
   buildTransactions,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
+import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES, SERIES_COLORS } from "./charts.js";
 import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
+import { initViewTabs, renderFilterChips } from "./view.js";
 
 const SERIES_MAX = 30;
 
@@ -137,7 +138,7 @@ function renderTpsCharts(start, end) {
   drawMultiLineChart(els.tpsDetailChart, applySelection("tpsDetail", seriesFromFlatRows(state.tpsDetailSeriesRows ?? [])), start, end);
   drawMultiLineChart(els.tpsOverallChart, [{
     name: "Overall TPS",
-    color: "#00bf8f",
+    color: SERIES_COLORS[0],
     points: (state.tpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
   }], start, end);
 }
@@ -162,7 +163,6 @@ function applySelection(key, allSeries) {
 }
 
 function seriesFromFlatRows(rows) {
-  const colors = ["#00bf8f", "#2f7df6", "#ff416d", "#8b5cf6", "#11c5e5", "#a56b00"];
   const grouped = new Map();
   for (const row of rows) {
     const current = grouped.get(row.name) ?? [];
@@ -171,7 +171,7 @@ function seriesFromFlatRows(rows) {
   }
   return [...grouped.entries()].map(([name, points], index) => ({
     name,
-    color: colors[index % colors.length],
+    color: SERIES_COLORS[index % SERIES_COLORS.length],
     points: points.sort((a, b) => a.x - b.x),
   }));
 }
@@ -244,6 +244,7 @@ function renderAll() {
   renderTpsSummaryPanels();
   renderCharts(transactions, start, end);
   renderErrors();
+  renderFilterChips({ onResetTime: resetTimeFilter, onResetGroup: resetGroupFilter, onResetGranularity: resetTpsGranularity });
   els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
 }
 
@@ -675,7 +676,31 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   }
 });
 
+// Klik baris transaksi memfokuskan chart response time ke transaksi itu (drill-down), tanpa
+// membuka halaman baru: konteks tabelnya tetap terlihat di belakang.
+async function drillDownToTransaction(name, isRps) {
+  const key = isRps ? "responseTimeApi" : "responseTime";
+  const rowsField = isRps ? "responseTimeApiRows" : "responseTimeRows";
+  state.chartSelections[key] = [name];
+  els.status.textContent = `Fokus chart response time: ${name}`;
+  await ensureSeriesLoaded(key, "/api/response-time-series", isRps ? "RPS_" : "BP", rowsField, [name]);
+  redrawCharts();
+  document.getElementById(isRps ? "section-rt-api-chart" : "section-rt-chart")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("th, button, a")) return;
+  const row = event.target.closest("#txBody tr, #txRpsBody tr");
+  if (!row || !state.data) return;
+  const name = row.querySelector("td")?.textContent.trim();
+  if (name) drillDownToTransaction(name, row.closest("tbody").id === "txRpsBody");
+});
+
 setupChartPanelActions();
+initViewTabs(() => {
+  syncToolbarHeight();
+  if (state.data) renderAll();
+});
 applyTheme(localStorage.getItem("loadrunnerTheme") === "dark" ? "dark" : "light");
 els.resultPath.value = localStorage.getItem("loadrunnerLastPath") || "";
 syncToolbarHeight();

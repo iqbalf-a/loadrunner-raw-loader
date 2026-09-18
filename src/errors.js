@@ -1,9 +1,8 @@
 import { formatHms, formatClockAt, parseHms, escapeHtml, fmtNumber } from "./format.js";
 import { state, sortRows } from "./state.js";
-import { drawMultiLineChart } from "./charts.js";
+import { drawMultiLineChart, SERIES_COLORS } from "./charts.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
 
-const COLORS = ["#ff416d", "#2f7df6", "#00bf8f", "#8b5cf6", "#11c5e5", "#a56b00"];
 // Di atas batas ini bucket kosong tidak diisi nol, supaya chart tidak menggambar puluhan ribu titik.
 const MAX_FILLED_BUCKETS = 2000;
 const EMPTY_FILTER = { scriptId: "", code: "", message: "", start: null, end: null };
@@ -86,7 +85,7 @@ function errorSeries(rows, from, to, granularity) {
   const steps = Math.floor((to - firstBucket) / granularity) + 1;
   return [...countsByName.entries()].map(([name, counts], index) => ({
     name,
-    color: COLORS[index % COLORS.length],
+    color: SERIES_COLORS[index % SERIES_COLORS.length],
     // Bucket tanpa error diisi nol; tanpa itu garis chart menyambung lurus melewati jeda tanpa error.
     points: steps <= MAX_FILLED_BUCKETS
       ? Array.from({ length: steps }, (_, i) => {

@@ -5,6 +5,8 @@ const chartInstances = new WeakMap();
 const chartSelectors = new Map();
 const searchQueries = new Map();
 export const MAX_SELECTED_SERIES = 10;
+// Satu palet untuk semua chart, senada dengan aksen gradien tema.
+export const SERIES_COLORS = ["#6366f1", "#06b6d4", "#10b981", "#f43f5e", "#a855f7", "#f59e0b"];
 const SEARCH_RESULTS_LIMIT = 150;
 
 // getAllNames: full searchable universe (may include series with no data loaded yet).
@@ -252,11 +254,13 @@ export function baseChartOptions(xMin = null, xMax = null) {
   };
 }
 
+// Isian sengaja tipis: satu panel bisa memuat 10 garis sekaligus, dan isian pekat membuatnya
+// menumpuk jadi blok gelap yang menutupi garisnya sendiri.
 function createGradient(canvas, color) {
   const ctx = canvas.getContext("2d");
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 240);
-  gradient.addColorStop(0, rgba(color, 0.22));
-  gradient.addColorStop(1, rgba(color, 0.03));
+  gradient.addColorStop(0, rgba(color, 0.1));
+  gradient.addColorStop(1, rgba(color, 0));
   return gradient;
 }
 
@@ -319,17 +323,20 @@ export function drawMultiLineChart(canvas, seriesList, xMinOverride = null, xMax
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   const xMin = Number.isFinite(xMinOverride) ? xMinOverride : allPoints.length ? Math.min(...allPoints.map((point) => point.x)) : 0;
   const xMax = Number.isFinite(xMaxOverride) ? xMaxOverride : allPoints.length ? Math.max(...allPoints.map((point) => point.x)) : 1;
+  // Tiap isian membentang dari nol sampai nilainya, jadi isian pada chart multi-garis saling
+  // menumpuk jadi bidang gelap yang menutupi garisnya. Isian hanya dipakai saat garisnya sedikit.
+  const filled = seriesList.length <= 2;
   const datasets = seriesList.map((series) => ({
     label: series.name,
     data: series.points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
     borderColor: series.color,
-    backgroundColor: createGradient(canvas, series.color),
+    backgroundColor: filled ? createGradient(canvas, series.color) : "transparent",
     borderWidth: 2.25,
     pointRadius: 0,
     pointHoverRadius: 4,
     pointHitRadius: 12,
     tension: 0.28,
-    fill: true,
+    fill: filled,
   }));
 
   const chart = new Chart(canvas, {
@@ -342,11 +349,10 @@ export function drawMultiLineChart(canvas, seriesList, xMinOverride = null, xMax
 
 export function transactionSeries(graphType, start, end, mapper) {
   const graph = graphByType(graphType);
-  const colors = ["#00bf8f", "#2f7df6", "#ff416d", "#8b5cf6", "#11c5e5", "#a56b00"];
   const grouped = rowsByMeasurement(graph, start, end);
   return [...grouped.entries()].map(([name, rows], index) => ({
     name,
-    color: colors[index % colors.length],
+    color: SERIES_COLORS[index % SERIES_COLORS.length],
     points: mapper([...rows].sort((a, b) => a.elapsedSeconds - b.elapsedSeconds)),
   }));
 }

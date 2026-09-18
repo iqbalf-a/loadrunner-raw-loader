@@ -1,6 +1,6 @@
 import { percentile } from "./format.js";
 import { state, graphByType, measurementName, inRange, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
-import { drawMultiLineChart } from "./charts.js";
+import { drawMultiLineChart, SERIES_COLORS } from "./charts.js";
 
 export function hostFromSiteScopeName(name) {
   const match = String(name ?? "").match(/\/APIGW\/([^/]+)/);
@@ -72,9 +72,8 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
 }
 
 export function renderSiteScopeSection(els, start, end, applySelection) {
-  const colors = ["#00bf8f", "#2f7df6", "#ff416d", "#8b5cf6"];
-  const cpuSeries = siteScopeSeries(/\/CPU\/utilization$/, start, end, colors);
-  const memorySeries = siteScopeSeries(/\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, colors);
+  const cpuSeries = siteScopeSeries(/\/CPU\/utilization$/, start, end, SERIES_COLORS);
+  const memorySeries = siteScopeSeries(/\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, SERIES_COLORS);
   drawMultiLineChart(els.siteScopeCpuChart, applySelection("siteScopeCpu", cpuSeries), start, end);
   drawMultiLineChart(els.siteScopeMemoryChart, applySelection("siteScopeMemory", memorySeries), start, end);
   renderSiteScopeMetricTable(els.siteScopeCpuBody, /\/CPU\/utilization$/, start, end, "siteScopeCpu", els.showAllSiteScopeCpuBtn, "siteScopeCpuRows");

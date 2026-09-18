@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LoadRunner Raw Dashboard</title>
-  <link rel="preload" href="/fonts/SpaceGrotesk-Medium.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/Inter-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/SpaceGrotesk-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/src/styles.css">
 </head>
@@ -88,6 +89,13 @@
           <button id="applyGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
           <button id="resetGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
           <div class="text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Gunakan % sebagai wildcard. Contoh: %mcm%</div>
+        </div>
+
+        <!-- Tab dan chip filter aktif dijadikan satu baris supaya toolbar sticky tidak memakan
+             tinggi layar yang seharusnya untuk data. -->
+        <div class="flex flex-wrap items-center gap-2 mt-2.5">
+          <div id="viewTabs" class="flex flex-wrap items-center gap-1.5"></div>
+          <div id="filterChips" class="flex flex-wrap items-center gap-2"></div>
         </div>
       </header>
 

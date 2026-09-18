@@ -1,9 +1,8 @@
 import { escapeHtml } from "./format.js";
 import { state, graphByType, measurementName, inRange, sortRows } from "./state.js";
-import { drawMultiLineChart } from "./charts.js";
+import { drawMultiLineChart, SERIES_COLORS } from "./charts.js";
 
 const LG_GRAPH_TYPE = "es_tr_lg_monitoring";
-const COLORS = ["#2f7df6", "#00bf8f", "#ff416d", "#8b5cf6", "#11c5e5", "#a56b00"];
 // Di atas ~80% CPU/Memory, load generator sendiri mulai jadi bottleneck: response time dan TPS yang
 // terukur ikut terdistorsi oleh injector, bukan murni oleh aplikasi yang diuji.
 export const LG_WARN_PERCENT = 80;
@@ -32,7 +31,7 @@ function rowsByHost(metric, start, end) {
 function metricSeries(metric, start, end) {
   return [...rowsByHost(metric, start, end).entries()].map(([host, rows], index) => ({
     name: host,
-    color: COLORS[index % COLORS.length],
+    color: SERIES_COLORS[index % SERIES_COLORS.length],
     points: rows.map((row) => ({ x: row.elapsedSeconds, y: row.value })).sort((a, b) => a.x - b.x),
   }));
 }

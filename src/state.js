@@ -46,6 +46,7 @@ export const state = {
   appliedEnd: 0,
   appliedTpsGranularity: DEFAULT_GRAPH_GRANULARITY_SECONDS,
   groupFilter: "",
+  viewGroup: "all",
   siteScopeCpuRows: [],
   siteScopeMemoryRows: [],
   errors: null,

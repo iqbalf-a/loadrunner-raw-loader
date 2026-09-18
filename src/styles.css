@@ -18,6 +18,14 @@
   font-style: normal;
   font-display: swap;
 }
+/* Inter dari Google Fonts adalah variable font: satu file untuk semua bobot. */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 @font-face {
   font-family: "JetBrains Mono";
   src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
@@ -33,26 +41,40 @@
   font-display: swap;
 }
 
-/* ── Design tokens: "instrument panel" — flat, hairline, single accent ──
-   These flip automatically via [data-theme="dark"], so Tailwind utilities
-   referencing them (e.g. bg-(--surface)) never need a dark: variant. */
+/* ── Design tokens: "glass console" — gradient ground, frosted panels, one
+   gradient accent. Tokens flip via [data-theme="dark"], so Tailwind utilities
+   referencing them (e.g. bg-(--surface)) never need a dark: variant. ── */
 :root {
-  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-display: "Inter", "Segoe UI", system-ui, sans-serif;
+  /* Judul memakai Space Grotesk, teks dan header tabel memakai Inter — sama seperti desain acuan. */
+  --font-heading: "Space Grotesk", "Inter", "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
 
-  --ink: #0b0e11;
-  --paper: #f4f3ee;
-  --surface: var(--paper);
-  --surface-raised: #fbfaf6;
-  --line: #d6d3c8;
-  --signal: #ff8a00;
-  --ok: #3ddc84;
-  --danger: #ff4136;
-  --text: #1c1e1f;
-  --text-muted: #6b6a63;
+  --ink: #0f172a;
+  --paper: #eef2f9;
+  /* Panel dan sidebar memakai putih semi transparan supaya gradien latar tembus. */
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface-raised: rgba(255, 255, 255, 0.78);
+  /* Elemen yang menempel (header tabel) butuh latar buram: dengan latar kaca, baris yang
+     lewat di bawahnya menembus dan teksnya terlihat saling tumpang tindih. */
+  --surface-solid: #f7f9fd;
+  --line: rgba(15, 23, 42, 0.08);
+  --signal: #6366f1;
+  --signal-soft: rgba(99, 102, 241, 0.12);
+  --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+  --ok: #10b981;
+  --danger: #f43f5e;
+  --text: #0f172a;
+  --text-muted: #64748b;
+
+  /* Skala ruang mengikuti desain acuan: kartu 28px radius, padding 24-32px, shadow lebar. */
+  --radius: 28px;
+  --radius-sm: 20px;
+  --shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  --blur: saturate(150%) blur(18px);
 
   /* Read by JS via currentCssVar() */
-  --grid-line: var(--line);
+  --grid-line: rgba(15, 23, 42, 0.07);
   --chart-text: var(--text-muted);
 
   /* Set by JS (measured from the actual sticky toolbar height) so scroll targets
@@ -65,23 +87,40 @@
 }
 
 [data-theme="dark"] {
-  --surface: var(--ink);
-  --surface-raised: #10141a;
-  --line: #2a2e33;
-  --text: #edeff2;
-  --text-muted: #9aa0a8;
-  --grid-line: var(--line);
+  --ink: #020617;
+  --paper: #0b1120;
+  --surface: rgba(148, 163, 184, 0.08);
+  --surface-raised: rgba(148, 163, 184, 0.13);
+  --surface-solid: #141c2e;
+  --line: rgba(148, 163, 184, 0.18);
+  --signal: #818cf8;
+  --signal-soft: rgba(129, 140, 248, 0.18);
+  --accent-gradient: linear-gradient(135deg, #22d3ee 0%, #818cf8 100%);
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --grid-line: rgba(148, 163, 184, 0.16);
   --chart-text: var(--text-muted);
+  --shadow: 0 20px 25px -5px rgba(2, 6, 23, 0.5), 0 8px 10px -6px rgba(2, 6, 23, 0.4);
 }
 
-/* ── Base surface: graph-paper crosshatch (signature element) ── */
+/* ── Base surface: soft mint → lavender wash (signature element) ── */
 body {
-  background-color: var(--surface);
+  background-color: var(--paper);
   background-image:
-    repeating-linear-gradient(0deg, color-mix(in srgb, var(--line) 55%, transparent) 0 1px, transparent 1px 24px),
-    repeating-linear-gradient(90deg, color-mix(in srgb, var(--line) 55%, transparent) 0 1px, transparent 1px 24px);
+    radial-gradient(1100px 700px at 0% 0%, rgba(125, 224, 224, 0.35) 0%, transparent 60%),
+    radial-gradient(1000px 800px at 100% 100%, rgba(165, 160, 245, 0.42) 0%, transparent 62%),
+    radial-gradient(900px 600px at 100% 0%, rgba(186, 230, 253, 0.3) 0%, transparent 55%);
   background-attachment: fixed;
+  color: var(--text);
   font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] body {
+  background-image:
+    radial-gradient(1100px 700px at 0% 0%, rgba(34, 211, 238, 0.12) 0%, transparent 60%),
+    radial-gradient(1000px 800px at 100% 100%, rgba(129, 140, 248, 0.18) 0%, transparent 62%),
+    radial-gradient(900px 600px at 100% 0%, rgba(56, 189, 248, 0.1) 0%, transparent 55%);
 }
 
 /* ── Grid layout ── */
@@ -89,21 +128,190 @@ body {
 .chart-panel { grid-column: auto; }
 .chart-panel.wide { grid-column: 1 / -1; }
 
-/* ── panel-title accent bar (::before pseudo-element, not utility-expressible) ── */
+/* ── Frosted panels: restyles the existing markup without touching it ── */
+.panel {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  background: var(--surface-raised) !important;
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+/* Judul panel: dari label mono uppercase kecil jadi judul biasa yang lebih besar. */
+.panel-title {
+  min-height: 64px !important;
+  padding: 20px 28px !important;
+  border-bottom-color: var(--line) !important;
+  color: var(--text) !important;
+  font-family: var(--font-heading) !important;
+  font-size: 16px !important;
+  font-weight: 700;
+  letter-spacing: -0.01em !important;
+  text-transform: none !important;
+}
+
+/* Metadata di samping judul (granularity, jumlah baris) tetap kecil dan redup. */
+.panel-title .muted,
+.panel-title [id^="seriesCount"],
+.panel-title [id$="Label"] {
+  color: var(--text-muted) !important;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Aksen judul panel: garis gradien pendek, pengganti bar amber lama. */
 .panel-title::before {
   content: "";
   display: inline-block;
-  width: 3px;
-  height: 14px;
-  background: var(--signal);
+  width: 4px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
   flex-shrink: 0;
 }
 
-/* ── Sidebar nav active state (JS-toggled class) ── */
+.app-section {
+  margin-bottom: 32px !important;
+}
+
+.app-section > h2 {
+  margin-bottom: 14px !important;
+  padding-bottom: 0 !important;
+  border-bottom: none !important;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* Halaman ikut lebih lapang: 40px atas, 32px sisi — sebelumnya 16/20px. */
+.main-col > main {
+  padding: 32px 32px 60vh !important;
+}
+
+#metrics,
+#scenarioInfo,
+#rangeInfo {
+  gap: 16px !important;
+}
+
+/* ── Sidebar: frosted rail, pill nav ── */
+.sidebar {
+  border-right: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.sidebar-nav a {
+  margin: 3px 12px;
+  padding: 10px 16px !important;
+  border-left: none !important;
+  border-radius: 999px;
+  font-size: 13px !important;
+  font-weight: 500;
+}
+
+.sidebar-nav a:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"] .sidebar-nav a:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
 .sidebar-nav a.active {
-  color: var(--signal);
-  border-left-color: var(--signal);
-  background: color-mix(in srgb, var(--signal) 8%, transparent);
+  background: var(--surface-raised);
+  box-shadow: 0 6px 16px -10px rgba(15, 23, 42, 0.6);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── Heading grup di sidebar (disisipkan oleh view.js dari peta grup) ── */
+.sidebar-nav .nav-heading {
+  margin: 14px 24px 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-nav .nav-heading:first-child {
+  margin-top: 4px;
+}
+
+/* ── Tab penyaring section ── */
+.view-tab {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.view-tab.active {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: #fff;
+  box-shadow: 0 8px 18px -10px rgba(99, 102, 241, 0.9);
+}
+
+/* ── Chip filter aktif ── */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.filter-chip.changed {
+  border-color: color-mix(in srgb, var(--signal) 45%, transparent);
+  background: var(--signal-soft);
+  color: var(--text);
+}
+
+.filter-chip button {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-chip button:hover {
+  background: color-mix(in srgb, var(--text-muted) 25%, transparent);
+}
+
+/* ── Header tabel menempel di atas tabelnya sendiri, bukan ke viewport: tabel panel tidak punya
+   area gulir sendiri, jadi menempelkannya ke tinggi toolbar membuat header melayang di tengah
+   tabel. Dengan top:0 header hanya "bekerja" di tabel yang memang punya gulir internal (Errors). */
+.panel table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-solid);
 }
 
 /* ── Sidebar nav type indicator (chart vs table sections) ── */
@@ -131,9 +339,156 @@ body {
 .sidebar-nav a[data-nav-type="table"]::before { background: var(--ok); }
 .sidebar-nav a[data-nav-type="mixed"]::before { background: linear-gradient(90deg, var(--signal) 50%, var(--ok) 50%); }
 
-/* ── Range chip "changed" state (JS-toggled class) ── */
+/* ── Toolbar ── */
+#toolbar {
+  border-bottom: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+/* ── Controls: pill inputs and buttons ── */
+#toolbar input,
+#toolbar select,
+.panel input,
+.panel select {
+  height: 38px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 999px !important;
+  background: var(--surface-raised) !important;
+  padding-inline: 18px !important;
+  font-size: 13px !important;
+}
+
+/* Kolom waktu lebarnya dipatok 96px di markup, jadi padding pill penuh membuat HH:MM:SS terpotong.
+   Selektornya sengaja menyertakan #toolbar/.panel supaya lebih spesifik dari aturan input umum. */
+#toolbar input#startTime,
+#toolbar input#endTime,
+.panel input#errorStartTime,
+.panel input#errorEndTime,
+#toolbar input#tpsGranularity {
+  padding-inline: 12px !important;
+  text-align: center;
+}
+
+#toolbar {
+  padding: 18px 32px !important;
+}
+
+#toolbar label {
+  margin-bottom: 6px !important;
+  font-family: var(--font-display) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.5px !important;
+}
+
+#toolbar input:focus,
+.panel input:focus,
+.panel select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--signal) 55%, transparent) !important;
+  box-shadow: 0 0 0 3px var(--signal-soft);
+}
+
+#toolbar button,
+.panel button:not(.panel-action-btn),
+.transaction-modal-header button {
+  height: 38px !important;
+  padding: 0 22px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 600;
+}
+
+.panel-action-btn {
+  height: 32px !important;
+  padding: 0 14px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.04em !important;
+}
+
+/* Tombol "Show All" posisinya sempat ikut-ikutan label metadata di sebelahnya (ada yang kiri, ada
+   yang tengah). Dengan order, tombolnya selalu jadi elemen paling kanan di panel mana pun —
+   termasuk panel tabel yang tidak punya tombol Expand/PNG, sehingga jaraknya ke tepi kanan sama. */
+.panel-title > .panel-actions {
+  order: 2;
+}
+
+.panel-title > button[id^="showAll"] {
+  order: 3;
+  margin-left: 8px !important;
+}
+
+.panel-title:not(:has(.panel-actions)) > button[id^="showAll"] {
+  margin-left: auto !important;
+}
+
+/* Tombol utama (dulu blok amber) jadi pill gradien. */
+#loadBtn,
+#applyTimeBtn,
+#applyGroupFilterBtn,
+#applyErrorFilterBtn,
+#loadErrorDbBtn {
+  border-color: transparent !important;
+  background: var(--accent-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px -12px rgba(99, 102, 241, 0.9);
+}
+
+.panel-action-btn {
+  border-radius: 999px !important;
+  border-color: var(--line) !important;
+  background: var(--surface-raised) !important;
+}
+
+.panel-action-btn:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--signal) 40%, transparent) !important;
+}
+
+/* ── Tables ── */
+/* Header kolom pakai Inter; angkanya di bawah tetap mono supaya digitnya tetap sejajar. */
+.panel table th,
+.transaction-modal th {
+  padding: 12px 16px !important;
+  border-bottom-color: var(--line) !important;
+  font-family: var(--font-display);
+  font-size: 10px !important;
+  font-weight: 600;
+  letter-spacing: 0.5px !important;
+}
+
+.panel table td,
+.transaction-modal td {
+  padding: 12px 16px !important;
+  border-bottom-color: color-mix(in srgb, var(--line) 60%, transparent) !important;
+  font-size: 12px !important;
+}
+
+/* Isi panel selain tabel (chart, filter, info) ikut padding kartu yang lebih lapang. */
+.chart-wrap {
+  padding: 16px 24px 20px !important;
+}
+
+.panel tbody tr:hover {
+  background: var(--signal-soft) !important;
+}
+
+/* ── Range/metric chips ── */
+.range-chip,
+#metrics > div {
+  padding: 20px 22px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--surface-raised) !important;
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
 .range-chip.changed {
-  border-left-color: var(--signal);
+  border-left: 3px solid transparent !important;
+  border-image: var(--accent-gradient) 1;
 }
 
 /* ── Chart panel expand (toggled by JS classList) ── */
@@ -153,8 +508,11 @@ body.transaction-modal-open {
   flex-direction: column;
   grid-column: auto;
   overflow: auto;
+  border-radius: var(--radius);
   background: var(--surface-raised);
-  box-shadow: 0 0 0 1px var(--line);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
 }
 
 .chart-panel.expanded .panel-title {
@@ -192,9 +550,9 @@ body.transaction-modal-open {
   width: 100%;
   height: 28px;
   margin-bottom: 8px;
-  padding: 0 9px;
+  padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 999px;
   background: var(--surface-raised);
   color: var(--text);
   font-family: var(--font-mono);
@@ -236,7 +594,9 @@ body.transaction-modal-open {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--ink) 60%, transparent);
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .loading-overlay[hidden] {
@@ -245,34 +605,39 @@ body.transaction-modal-open {
 
 .loading-card {
   width: min(460px, 100%);
-  padding: 18px 20px;
+  padding: 20px 22px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius);
   background: var(--surface-raised);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
   font-family: var(--font-mono);
 }
 
 .loading-title {
   color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .loading-bar {
-  height: 6px;
+  height: 8px;
   margin: 14px 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--surface);
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
   overflow: hidden;
 }
 
 .loading-bar-fill {
   width: 0;
   height: 100%;
-  background: var(--signal);
+  border-radius: 999px;
+  background: var(--accent-gradient);
   transition: width 180ms linear;
 }
 
@@ -291,7 +656,9 @@ body.transaction-modal-open {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--ink) 60%, transparent);
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .transaction-modal[hidden] {
@@ -305,8 +672,11 @@ body.transaction-modal-open {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius);
   background: var(--surface-raised);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
 }
 
 .transaction-modal-header {
@@ -314,17 +684,17 @@ body.transaction-modal-open {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 52px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--line);
 }
 
 .transaction-modal-header h2 {
   margin: 0;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-heading);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -337,6 +707,7 @@ body.transaction-modal-open {
   position: sticky;
   top: 0;
   z-index: 1;
+  background: var(--surface-solid) !important;
 }
 
 @media (max-width: 640px) {
@@ -350,8 +721,8 @@ body.transaction-modal-open {
 }
 
 /* ── Status classes used in innerHTML JS ── */
-.ok   { color: var(--ok); font-weight: 500; }
-.fail { color: var(--danger); font-weight: 500; }
+.ok   { color: var(--ok); font-weight: 600; }
+.fail { color: var(--danger); font-weight: 600; }
 .muted { color: var(--text-muted); }
 
 #status.status-error {
@@ -359,17 +730,11 @@ body.transaction-modal-open {
   font-weight: 500;
 }
 
-/* ── panel-action-btn hover (needs color-mix, not easily Tailwind) ── */
-.panel-action-btn:hover {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--text-muted) 40%, transparent);
-}
-
 /* ── Responsive: collapse sidebar below content width ── */
 @media (max-width: 900px) {
   .sidebar { position: static !important; width: auto !important; height: auto !important; border-right: none !important; border-bottom: 1px solid var(--line); }
   .main-col { margin-left: 0 !important; }
   .sidebar-nav { display: flex; flex-wrap: wrap; }
-  .sidebar-nav a { border-left: none !important; border-bottom: 2px solid transparent; }
-  .sidebar-nav a.active { border-left-color: transparent; border-bottom-color: var(--signal); }
+  .sidebar-nav a { border-bottom: 2px solid transparent; }
+  .sidebar-nav a.active { border-bottom-color: transparent; }
 }
