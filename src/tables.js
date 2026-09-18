@@ -32,7 +32,8 @@ export function renderTable(transactions, tbody, showAllBtn, tableKey) {
   const filtered = re ? transactions.filter((tx) => re.test(tx.groupName ?? "")) : transactions;
   const rows = sortRows(filtered, state.sort[tableKey]);
   tbody.innerHTML = renderTransactionRows(rows.slice(0, TRANSACTION_SUMMARY_LIMIT));
-  showAllBtn.hidden = rows.length <= TRANSACTION_SUMMARY_LIMIT;
+  // Tetap tampil walau semua baris sudah muat: modalnya juga jalan sebagai jalan ke tombol Copy.
+  showAllBtn.hidden = rows.length === 0;
   showAllBtn.textContent = `Show All (${rows.length})`;
 }
 
@@ -178,7 +179,7 @@ export function renderTpsSummaryRows(rows, mode = "transaction") {
 export function renderTpsSummaryTable(rows, tbody, showAllBtn, tableKey, mode = "transaction") {
   const filtered = sortRows(filterByGroup(rows, mode), state.sort[tableKey]);
   tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode);
-  showAllBtn.hidden = filtered.length <= TRANSACTION_SUMMARY_LIMIT;
+  showAllBtn.hidden = filtered.length === 0;
   showAllBtn.textContent = `Show All (${filtered.length})`;
 }
 

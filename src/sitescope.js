@@ -58,7 +58,7 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
   if (stateKey) state[stateKey] = hostRows;
   const sorted = sortRows(hostRows, state.sort[tableKey]);
   if (showAllBtn) {
-    showAllBtn.hidden = sorted.length <= TRANSACTION_SUMMARY_LIMIT;
+    showAllBtn.hidden = sorted.length === 0;
     showAllBtn.textContent = `Show All (${sorted.length})`;
   }
   target.innerHTML = sorted.slice(0, showAllBtn ? TRANSACTION_SUMMARY_LIMIT : sorted.length).map((row) => `
