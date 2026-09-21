@@ -38,6 +38,10 @@ Semua dibaca dari folder result, tanpa database eksternal.
 | `offline.dat` + `offl_*.def` | Data SiteScope (dipakai CLI) |
 | `SqliteDb.db` | Error vuser dan Controller (opsional, boleh di luar folder result) |
 
+Berkas graph dicari di `sum_data` lebih dulu, lalu di folder result. Sebagian result yang dibagikan
+sebagai ZIP menaruh salah satu graph (terlihat pada `graph_0.dat` berisi data SiteScope) di akar
+folder result, dan pengguna tidak boleh diminta merapikan berkas sebelum memuat result.
+
 ## Alur kerja pengguna
 
 1. Isi path folder raw result, lalu muat. Path terakhir yang berhasil diingat untuk sesi berikutnya.

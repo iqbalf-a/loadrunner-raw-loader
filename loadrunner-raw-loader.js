@@ -293,6 +293,16 @@ async function parseGraphData(filePath, measurementsById, scenarioStartTime, inc
   return { rows, stats };
 }
 
+// Sebagian result yang dibagikan sebagai ZIP menaruh salah satu graph (yang terlihat: graph_0.dat
+// berisi data SiteScope) di akar folder result, bukan di sum_data seperti graph lainnya. Isinya
+// sama persis, cuma letaknya beda, jadi dicari juga di sebelah sum_data sebelum dianggap tidak ada.
+function resolveGraphFile(sumDataDir, index) {
+  const inSumData = path.join(sumDataDir, `graph_${index}.dat`);
+  if (existsSync(inSumData)) return inSumData;
+  const besideSumData = path.join(path.dirname(sumDataDir), `graph_${index}.dat`);
+  return existsSync(besideSumData) ? besideSumData : inSumData;
+}
+
 function fileSizeOrZero(filePath) {
   try {
     return statSync(filePath).size;
@@ -305,7 +315,7 @@ async function parseAllGraphData(sumDataDir, graphs, measurementsById, scenarioS
   const parsedGraphs = [];
   // Progres dihitung dari byte, bukan jumlah file: satu graph response time bisa jauh lebih besar
   // daripada semua graph lain digabung.
-  const filePaths = graphs.map((graph) => path.join(sumDataDir, `graph_${graph.index}.dat`));
+  const filePaths = graphs.map((graph) => resolveGraphFile(sumDataDir, graph.index));
   const sizes = onProgress ? filePaths.map(fileSizeOrZero) : [];
   const totalBytes = sizes.reduce((sum, size) => sum + size, 0) || 1;
   let doneBytes = 0;

@@ -26,7 +26,7 @@ const DEFAULT_MAX_SERIES_PER_GRAPH = 12;
 const SITESCOPE_METRIC_PATTERN = /\/CPU\/utilization$|\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
 // Naikkan setiap kali isi ingest berubah (graph baru, filter baris), supaya cache lama di-ingest
 // ulang otomatis; fingerprint file source saja tidak tahu logic ingest berubah.
-const INGEST_VERSION = 2;
+const INGEST_VERSION = 3;
 
 function cacheKey(resultDir) {
   return createHash("sha256").update(path.resolve(resultDir)).digest("hex").slice(0, 24);
