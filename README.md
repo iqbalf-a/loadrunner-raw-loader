@@ -31,7 +31,9 @@ D:\transfer-kantor\RawResults_12
 ## Fitur dashboard
 
 - **Transaction Summary** — tabel min, avg, max, P90, std deviation, success, fail, total per transaksi.
-- **TPS By Transaction** — throughput per transaksi dengan granularity bucket yang bisa diatur (default 10s).
+- **TPS By Transaction** — throughput per transaksi dengan granularity bucket yang bisa diatur.
+  Default mengikuti durasi run: 512s untuk run 2 jam ke atas, 256s untuk run 1-2 jam, dan di bawah
+  1 jam pangkat dua terkecil yang membuat grafik muat dalam 32 titik (aturan LRA).
 - **VUsers Overall** — grafik running vusers sepanjang waktu skenario.
 - **Response Time By Transaction** — grafik multi-line per transaksi.
 - **SiteScope CPU & Memory** — grafik dan tabel min/avg/max per host (mendukung UNIXRES dan WINRES).

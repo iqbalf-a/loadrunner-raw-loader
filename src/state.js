@@ -12,9 +12,19 @@ export const TRANSACTION_SUMMARY_LIMIT = 20;
 export const GRANULARITY_STEPS_SECONDS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
 export const TARGET_GRAPH_POINTS = 32;
 
+// Run panjang dipatok, tidak ikut tangga pangkat dua: 1 jam ke atas 256s, 2 jam ke atas 512s.
+// Aturan LRA di atas tetap dipakai untuk run di bawah 1 jam.
+const HOUR_SECONDS = 3600;
+export const LONG_RUN_GRANULARITY = [
+  { minDurationSeconds: 2 * HOUR_SECONDS, granularity: 512 },
+  { minDurationSeconds: HOUR_SECONDS, granularity: 256 },
+];
+
 export function autoGranularitySeconds(durationSeconds) {
   const duration = Number(durationSeconds);
   if (!Number.isFinite(duration) || duration <= 0) return DEFAULT_GRAPH_GRANULARITY_SECONDS;
+  const longRun = LONG_RUN_GRANULARITY.find((rule) => duration >= rule.minDurationSeconds);
+  if (longRun) return longRun.granularity;
   return GRANULARITY_STEPS_SECONDS.find((step) => duration / step <= TARGET_GRAPH_POINTS)
     ?? GRANULARITY_STEPS_SECONDS[GRANULARITY_STEPS_SECONDS.length - 1];
 }
