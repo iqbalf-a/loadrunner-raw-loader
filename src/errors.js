@@ -1,4 +1,4 @@
-import { formatHms, formatClockAt, parseHms, escapeHtml, fmtNumber } from "./format.js";
+import { formatHms, parseHms, escapeHtml, fmtNumber } from "./format.js";
 import { state, sortRows } from "./state.js";
 import { drawMultiLineChart } from "./charts.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
@@ -97,6 +97,46 @@ function errorSeries(rows, from, to, granularity) {
   }));
 }
 
+// Timestamp asli dari SqliteDb.db ("YYYY-MM-DD HH:MM:SS"): jamnya ditampilkan, tanggal jadi tooltip.
+// Sebelumnya kolom ini memakai elapsed dari awal skenario, yang membulatkan error yang tercatat
+// sebelum skenario resmi mulai (elapsed negatif) menjadi 00:00:00.
+function clockOf(timestamp) {
+  const match = String(timestamp ?? "").match(/(\d{2}:\d{2}:\d{2})/);
+  return match ? match[1] : "-";
+}
+
+// Satu baris tabel adalah gabungan banyak kejadian. Yang ditampilkan hanya iterasi pertama —
+// satu angka, sejajar dengan kolom hitungan di sebelahnya — sementara rentang dan jumlah iterasi
+// lengkapnya disimpan di tooltip.
+function iterationCell(row) {
+  if (!row.firstIteration) return { text: "-", title: "Di luar iterasi vuser (pesan Controller)" };
+  const title = row.firstIteration === row.lastIteration
+    ? "Hanya di iterasi ini"
+    : `Iterasi ${fmtNumber(row.firstIteration)} sampai ${fmtNumber(row.lastIteration)}, ${fmtNumber(row.iterations)} iterasi berbeda`;
+  return { text: fmtNumber(row.firstIteration), title };
+}
+
+// Yang ditanyakan orang cuma "error ini muncul jam berapa", jadi selnya memuat jam kemunculan
+// pertama; kalau kejadiannya membentang, rentang lengkapnya ada di tooltip.
+function timeCell(row) {
+  const first = clockOf(row.firstTime);
+  if (first === "-") return { text: "-", title: "" };
+  const last = clockOf(row.lastTime);
+  return {
+    text: first,
+    title: first === last ? String(row.firstTime) : `${row.firstTime} sampai ${row.lastTime}`,
+  };
+}
+
+const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>`;
+
+// Nilai di kolom ini sering dipindah ke tiket atau chat: nama script, URL endpoint, dan teks
+// pesan error. Tombolnya muncul saat sel di-hover supaya tabel tetap bersih saat dibaca.
+function copyable(content, value) {
+  if (!value) return content;
+  return `${content}<button type="button" class="copy-btn" data-copy="${escapeHtml(value)}" title="Salin">${COPY_ICON}</button>`;
+}
+
 function cell(content, cls = "text-right whitespace-nowrap", title = "") {
   return `<td class="px-3.5 py-2.25 border-b border-(--line) ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}>${content}</td>`;
 }
@@ -107,16 +147,16 @@ function renderRows(rows) {
   }
   return rows.map((row) => `
     <tr class="hover:bg-(--surface) align-top">
-      ${cell(escapeHtml(row.scriptName), "text-left whitespace-nowrap")}
+      ${cell(copyable(escapeHtml(row.scriptName), row.scriptName), "text-left whitespace-nowrap has-copy")}
       ${cell(row.errorCode, "text-right whitespace-nowrap fail")}
       ${cell(row.apiCode ?? "-", `text-right whitespace-nowrap ${row.apiCode ? "fail" : "muted"}`)}
-      ${cell(escapeHtml(row.apiPath ?? "-"), `text-left min-w-64 break-all ${row.apiPath ? "" : "muted"}`, row.apiUrl ?? "")}
-      ${cell(escapeHtml(row.message.trim()), "text-left min-w-90 break-words whitespace-pre-line")}
+      ${cell(copyable(escapeHtml(row.apiPath ?? "-"), row.apiPath), `text-left min-w-64 break-all has-copy ${row.apiPath ? "" : "muted"}`, row.apiUrl ?? "")}
+      ${cell(copyable(escapeHtml(row.message.trim()), row.message.trim()), "text-left min-w-90 break-words whitespace-pre-line has-copy")}
       ${cell(fmtNumber(row.count))}
       ${cell(fmtNumber(row.vusers), "text-right whitespace-nowrap muted")}
+      ${cell(iterationCell(row).text, `text-right whitespace-nowrap ${row.firstIteration ? "" : "muted"}`, iterationCell(row).title)}
       ${cell(escapeHtml((row.injectors ?? "-").replaceAll(",", ", ")), "text-left muted")}
-      ${cell(formatHms(row.firstSeconds), "text-right whitespace-nowrap", formatClockAt(row.firstSeconds))}
-      ${cell(formatHms(row.lastSeconds), "text-right whitespace-nowrap", formatClockAt(row.lastSeconds))}
+      ${cell(timeCell(row).text, "text-right whitespace-nowrap", timeCell(row).title)}
     </tr>
   `).join("");
 }
@@ -221,6 +261,24 @@ try {
   state.errorDbPath = "";
 }
 els.dbPath.value = state.errorDbPath;
+
+// Baris tabel dirender ulang tiap filter berubah, jadi klik ditangkap di tbody, bukan per tombol.
+els.body.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+  const original = button.innerHTML;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copy);
+    button.innerHTML = "&#10003;";
+  } catch {
+    button.innerHTML = "&#10007;";
+  }
+  button.classList.add("copied");
+  setTimeout(() => {
+    button.innerHTML = original;
+    button.classList.remove("copied");
+  }, 1200);
+});
 
 els.loadBtn.addEventListener("click", loadErrorDatabase);
 els.dbPath.addEventListener("keydown", (event) => { if (event.key === "Enter") loadErrorDatabase(); });

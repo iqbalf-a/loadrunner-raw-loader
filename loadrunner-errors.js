@@ -210,7 +210,12 @@ export async function queryErrors(session, options = {}) {
   const groupedRows = all(db, `SELECT ${SCRIPT_NAME} AS scriptName, m.Error_Code AS errorCode,
       COALESCE(e.Message_String, '') AS message, COUNT(*) AS count, COUNT(DISTINCT m.Vuser_ID) AS vusers,
       group_concat(DISTINCT i.Injector_Name) AS injectors,
-      MIN(${ELAPSED}) AS firstSeconds, MAX(${ELAPSED}) AS lastSeconds
+      MIN(${ELAPSED}) AS firstSeconds, MAX(${ELAPSED}) AS lastSeconds,
+      MIN(m.Time) AS firstTime, MAX(m.Time) AS lastTime,
+      -- Iterasi 0 dipakai untuk pesan tingkat Controller yang terjadi di luar iterasi vuser, jadi
+      -- rentangnya dihitung dari iterasi sungguhan saja supaya tidak selalu mulai dari 0.
+      MIN(NULLIF(m.Iteration, 0)) AS firstIteration, MAX(m.Iteration) AS lastIteration,
+      COUNT(DISTINCT NULLIF(m.Iteration, 0)) AS iterations
     ${FROM_MAIN} ${whereSql} ${groupBy}
     ORDER BY count DESC LIMIT ${ROWS_LIMIT}`, values);
   const rows = groupedRows.map((row) => ({ ...row, apiCode: apiErrorCode(row.message), ...apiEndpoint(row.message) }));
