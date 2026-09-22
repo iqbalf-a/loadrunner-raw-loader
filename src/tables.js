@@ -45,10 +45,10 @@ export function renderTransactionRows(transactions) {
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.min)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.avg)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.max)}</td>
+      <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.stdDeviation)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.percentile90)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.percentile95)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.percentile99)}</td>
-      <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.stdDeviation)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap ok">${fmtNumber(tx.success)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap fail">${fmtNumber(tx.fail)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtNumber(tx.samples)}</td>
