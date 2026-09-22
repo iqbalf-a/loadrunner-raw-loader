@@ -359,6 +359,15 @@ body.transaction-modal-open {
   font-weight: 500;
 }
 
+/* ── Ikon di dalam tombol aksi panel ── */
+.panel-action-btn .btn-icon {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
 /* ── panel-action-btn hover (needs color-mix, not easily Tailwind) ── */
 .panel-action-btn:hover {
   color: var(--text);

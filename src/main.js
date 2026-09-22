@@ -5,7 +5,7 @@ import {
   resolveGroup,
   buildTransactions,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
+import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
 import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
@@ -623,6 +623,8 @@ document.addEventListener("click", (event) => {
 
   if (button.dataset.chartAction === "download") {
     downloadChartPng(panel);
+  } else if (button.dataset.chartAction === "copy") {
+    copyChartImage(panel, button);
   } else if (button.dataset.chartAction === "expand") {
     toggleExpandPanel(panel, button);
   }

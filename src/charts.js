@@ -75,20 +75,58 @@ function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
+// Ikon inline (bukan icon font/CDN) supaya dashboard tetap jalan tanpa internet.
+const DOWNLOAD_ICON = `<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>`;
+const COPY_ICON = `<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>`;
+
 export function chartFileName(panel) {
   const title = panel.querySelector(".panel-title")?.innerText ?? "chart";
-  return `${title.replace(/EXPAND|CLOSE|PNG/g, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "chart"}.png`;
+  // Label tombol ikut terbaca dari judul panel, termasuk label sementara tombol Copy.
+  return `${title.replace(/EXPAND|CLOSE|PNG|COPIED!|GAGAL/g, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "chart"}.png`;
 }
 
+// Dikonfirmasi dulu: tombolnya bersebelahan dengan Expand dan Copy, jadi salah klik gampang
+// terjadi dan hasilnya berkas nyasar di folder Downloads tanpa disadari.
 export function downloadChartPng(panel) {
   const canvas = panel.querySelector("canvas");
   const chart = canvas ? chartInstances.get(canvas) : null;
   if (!chart) return;
 
+  const fileName = chartFileName(panel);
+  if (!window.confirm(`Download grafik ini sebagai PNG?\n\n${fileName}`)) return;
+
   const link = document.createElement("a");
-  link.download = chartFileName(panel);
+  link.download = fileName;
   link.href = chart.toBase64Image("image/png", 1);
   link.click();
+}
+
+function flashButtonLabel(button, text) {
+  const original = button.innerHTML;
+  button.innerHTML = text;
+  button.disabled = true;
+  setTimeout(() => {
+    button.innerHTML = original;
+    button.disabled = false;
+  }, 1400);
+}
+
+// Menyalin gambar grafik ke clipboard supaya bisa langsung ditempel ke chat atau dokumen laporan,
+// tanpa lewat berkas. Clipboard gambar butuh izin browser, jadi kegagalannya dilaporkan di tombol.
+export async function copyChartImage(panel, button) {
+  const canvas = panel.querySelector("canvas");
+  const chart = canvas ? chartInstances.get(canvas) : null;
+  if (!chart) return;
+
+  try {
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((value) => (value ? resolve(value) : reject(new Error("Gagal membaca grafik"))), "image/png");
+    });
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    flashButtonLabel(button, "Copied!");
+  } catch {
+    flashButtonLabel(button, "Gagal");
+  }
 }
 
 export function resizePanelChart(panel) {
@@ -123,11 +161,13 @@ export function setupChartPanelActions() {
     const title = panel.querySelector(".panel-title");
     if (!title) return;
 
+    const buttonClass = "panel-action-btn h-6 min-w-12 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer";
     const actions = document.createElement("div");
     actions.className = "panel-actions flex gap-1.5 ml-auto items-center";
     actions.innerHTML = `
-      <button class="panel-action-btn h-6 min-w-12 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" type="button" data-chart-action="expand" style="font-family: var(--font-mono);">Expand</button>
-      <button class="panel-action-btn h-6 min-w-12 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--chart-text) text-[10px] font-medium tracking-[0.08em] uppercase cursor-pointer" type="button" data-chart-action="download" style="font-family: var(--font-mono);">PNG</button>
+      <button class="${buttonClass}" type="button" data-chart-action="expand" style="font-family: var(--font-mono);">Expand</button>
+      <button class="${buttonClass}" type="button" data-chart-action="download" title="Download grafik sebagai PNG" style="font-family: var(--font-mono);">${DOWNLOAD_ICON}PNG</button>
+      <button class="${buttonClass}" type="button" data-chart-action="copy" title="Salin grafik sebagai gambar" style="font-family: var(--font-mono);">${COPY_ICON}PNG</button>
     `;
     title.appendChild(actions);
     panel.dataset.actionsReady = "true";
