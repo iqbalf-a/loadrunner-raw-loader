@@ -247,6 +247,9 @@ function renderAll() {
   els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
 }
 
+// Apply/Reset menjalankan ulang seluruh query dashboard, sama beratnya dengan Load Result, jadi
+// overlay-nya ikut muncul. Bedanya tidak ada tahap ingest di server: data sudah ada di cache, yang
+// berjalan cuma query, jadi 0-90% dibagi rata per query dan sisanya untuk render.
 async function withLoadTimer(loadingLabel, task) {
   els.status.className = STATUS_BASE;
   const startedAt = Date.now();
@@ -254,8 +257,10 @@ async function withLoadTimer(loadingLabel, task) {
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
     els.status.textContent = `${loadingLabel}... ${elapsed}s`;
   }, 100);
+  startLoadingOverlay(loadingLabel, newProgressToken());
   try {
-    await task();
+    await task((done, total) => setProgress((90 * done) / total, `Query dashboard ${done}/${total}...`));
+    setProgress(100, "Selesai");
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
     els.status.textContent += ` | Updated in ${elapsed}s`;
   } catch (error) {
@@ -263,6 +268,7 @@ async function withLoadTimer(loadingLabel, task) {
     els.status.className = STATUS_ERR;
   } finally {
     clearInterval(timerInterval);
+    finishLoadingOverlay();
   }
 }
 
@@ -278,8 +284,8 @@ async function applyTimeFilter() {
   }
   state.appliedStart = start;
   state.appliedEnd = end;
-  await withLoadTimer("Applying filter", async () => {
-    await refreshDashboardData();
+  await withLoadTimer("Applying filter", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
     renderAll();
     els.status.textContent = `Filter applied: ${formatHms(start)} - ${formatHms(end)}`;
   });
@@ -294,8 +300,8 @@ async function applyTpsGranularity() {
     return;
   }
   state.appliedTpsGranularity = tpsGranularity;
-  await withLoadTimer("Applying granularity", async () => {
-    await refreshDashboardData();
+  await withLoadTimer("Applying granularity", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
     renderAll();
     els.status.textContent = `Granularity grafik applied: ${tpsGranularity}s bucket`;
   });
@@ -307,8 +313,8 @@ async function resetTpsGranularity() {
   const granularity = autoGranularitySeconds(state.data.result.scenario.durationSeconds);
   els.tpsGranularity.value = String(granularity);
   state.appliedTpsGranularity = granularity;
-  await withLoadTimer("Resetting granularity", async () => {
-    await refreshDashboardData();
+  await withLoadTimer("Resetting granularity", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
     renderAll();
     els.status.textContent = `Granularity grafik reset to auto: ${granularity}s bucket`;
   });
@@ -467,23 +473,40 @@ async function refreshDashboardData(onQueryProgress) {
   await refreshErrors();
 }
 
-function applyGroupFilter() {
-  if (!state.data) return;
-  state.groupFilter = els.groupFilter.value.trim();
+// Filter group tidak memanggil server sama sekali, semuanya render ulang di browser. Render itu
+// memblokir thread, jadi overlay-nya harus sempat tergambar dulu (dua frame) sebelum kerjanya
+// mulai — kalau tidak, browser baru melukis setelah tabelnya selesai dan overlay tidak pernah
+// kelihatan.
+async function withRenderOverlay(label, render) {
+  startLoadingOverlay(label, newProgressToken());
+  setProgress(20, "Menyusun tabel...");
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  try {
+    render();
+    setProgress(100, "Selesai");
+  } finally {
+    finishLoadingOverlay();
+  }
+}
+
+function renderGroupFilteredTables() {
   const transactions = buildTransactions();
   renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
   renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
   renderTpsSummaryPanels();
 }
 
-function resetGroupFilter() {
+async function applyGroupFilter() {
+  if (!state.data) return;
+  state.groupFilter = els.groupFilter.value.trim();
+  await withRenderOverlay("Applying group filter", renderGroupFilteredTables);
+}
+
+async function resetGroupFilter() {
   els.groupFilter.value = "";
   state.groupFilter = "";
   if (!state.data) return;
-  const transactions = buildTransactions();
-  renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
-  renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
-  renderTpsSummaryPanels();
+  await withRenderOverlay("Resetting group filter", renderGroupFilteredTables);
 }
 
 async function resetTimeFilter() {
@@ -493,8 +516,8 @@ async function resetTimeFilter() {
   els.endTime.value = formatHms(duration);
   state.appliedStart = 0;
   state.appliedEnd = duration;
-  await withLoadTimer("Resetting filter", async () => {
-    await refreshDashboardData();
+  await withLoadTimer("Resetting filter", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
     renderAll();
     els.status.textContent = `Filter reset: ${formatHms(0)} - ${formatHms(duration)}`;
   });

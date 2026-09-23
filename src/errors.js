@@ -215,11 +215,15 @@ async function applyErrorFilter() {
     end,
   };
   els.applyBtn.disabled = true;
+  const progressToken = newProgressToken();
+  startLoadingOverlay("Apply Filter", progressToken);
   setInfo("Loading errors...");
   try {
-    await refreshErrors();
+    await refreshErrors(progressToken);
+    setProgress(100, "Selesai");
     renderErrors();
   } finally {
+    finishLoadingOverlay();
     els.applyBtn.disabled = false;
   }
 }
