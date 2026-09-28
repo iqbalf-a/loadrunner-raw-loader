@@ -1,5 +1,6 @@
+import { formatHms, formatClockAt } from "./format.js";
 import { state, sortRows } from "./state.js";
-import { filterByGroup } from "./tables.js";
+import { filterByGroup, overviewMetrics } from "./tables.js";
 import { buildXlsx } from "./xlsx.js";
 
 // Satu sheet per panel tabel, nama sheet = judul panel tanpa akhiran "(Table)"/"(Chart + Table)"
@@ -54,6 +55,56 @@ const ERROR_COLUMNS = [
   col("First Time", "firstTime"), col("Last Time", "lastTime"),
 ];
 
+function rangeText(from, to, format) {
+  return `${format(from)} - ${format(to)}`;
+}
+
+function errorFilterText() {
+  const filter = state.errorFilter;
+  const script = state.errors?.scripts?.find((s) => String(s.id) === filter.scriptId)?.name ?? filter.scriptId;
+  const parts = [
+    script && `Script: ${script}`,
+    filter.code && `Code: ${filter.code}`,
+    filter.message && `Message: ${filter.message}`,
+    (filter.start !== null || filter.end !== null) && `Time: ${filter.start !== null ? formatHms(filter.start) : "awal"} - ${filter.end !== null ? formatHms(filter.end) : "akhir"}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join("; ") : "(tidak ada)";
+}
+
+// Sheet pertama: isi panel Overview plus filter yang aktif saat export, supaya file yang dibuka
+// belakangan masih bisa ditelusuri dibuat dari rentang dan granularity berapa.
+function overviewSheet() {
+  const { scenario, resultDir } = state.data.result;
+  const duration = scenario.durationSeconds || 0;
+  const start = state.appliedStart;
+  const end = state.appliedEnd || duration;
+  const metrics = overviewMetrics(state.transactions, start, end);
+  const int = (value) => ({ value, format: "int" });
+  const dec = (value) => ({ value, format: "dec3" });
+  const rows = [
+    ["Project", scenario.companyName || "-"],
+    ["Scenario", scenario.sessionName || "-"],
+    ["Run Date", scenario.runDate || "-"],
+    ["Result Folder", resultDir || "-"],
+    ["All Range (elapsed)", rangeText(0, duration, formatHms)],
+    ["All Range (clock)", rangeText(0, duration, formatClockAt)],
+    ["Filtered Range (elapsed)", rangeText(start, end, formatHms)],
+    ["Filtered Range (clock)", rangeText(start, end, formatClockAt)],
+    ["Granularity (s)", int(state.appliedTpsGranularity)],
+    ["Filter Group Name", state.groupFilter || "(tidak ada)"],
+    ["Transactions (BP)", int(state.transactions.length)],
+    ["Success", int(metrics.success)],
+    ["Fail", int(metrics.fail)],
+    ["Fail (%)", dec(metrics.total ? (metrics.fail / metrics.total) * 100 : 0)],
+    ["Total", int(metrics.total)],
+    ["Avg RT (ms)", dec(metrics.avg * 1000)],
+    ["Peak VUsers", int(metrics.peakVusers)],
+    ...(state.errors?.available ? [["Error Filter", errorFilterText()]] : []),
+    ["Exported At", new Date().toLocaleString("id-ID")],
+  ];
+  return { name: "Overview", columns: [col("Item", 0), col("Value", 1)], rows };
+}
+
 function sheet(name, columns, rows) {
   return {
     name,
@@ -70,6 +121,7 @@ export function collectTableSheets() {
   const sheets = [];
   if (state.data) {
     sheets.push(
+      overviewSheet(),
       tableSheet("Transactions Summary (BP)", TX_COLUMNS, state.transactions, "tx", "transaction"),
       tableSheet("Transactions Summary (RPS_)", TX_COLUMNS, state.rpsTransactions, "txRps", "transaction"),
       tableSheet("TPS", tpsColumns("Transaction", true), state.tpsSummary, "tpsSummary", "transaction"),

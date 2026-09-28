@@ -1,7 +1,8 @@
 import { fmtNumber, fmtSeconds, fmtMs, escapeHtml, formatHms } from "./format.js";
 import { state, graphByType, inRange, groupLikeToRegex, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
 
-export function renderMetrics(target, transactions, start, end) {
+// Dipakai kartu Overview dan sheet Overview di export XLSX, supaya angkanya selalu sama.
+export function overviewMetrics(transactions, start, end) {
   const success = transactions.reduce((sum, tx) => sum + tx.success, 0);
   const fail = transactions.reduce((sum, tx) => sum + tx.fail, 0);
   const total = success + fail;
@@ -9,6 +10,11 @@ export function renderMetrics(target, transactions, start, end) {
   const peakVusers = Math.max(0, ...(graphByType("es_tr_runtime_vusers")?.rows ?? [])
     .filter((row) => inRange(row, start, end))
     .map((row) => row.value));
+  return { success, fail, total, avg, peakVusers };
+}
+
+export function renderMetrics(target, transactions, start, end) {
+  const { success, fail, total, avg, peakVusers } = overviewMetrics(transactions, start, end);
 
   const items = [
     ["Success", fmtNumber(success), `${transactions.length} TRANSACTIONS`],

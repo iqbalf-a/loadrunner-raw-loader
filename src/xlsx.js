@@ -114,7 +114,11 @@ export function safeSheetNames(names) {
   });
 }
 
-function cellXml(ref, value, format) {
+// Sel bisa berupa { value, format } untuk menimpa format kolom, misalnya kolom yang isinya campuran.
+function cellXml(ref, cell, columnFormat) {
+  const isObject = cell !== null && typeof cell === "object";
+  const value = isObject ? cell.value : cell;
+  const format = isObject ? cell.format : columnFormat;
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "number") {
     if (!Number.isFinite(value)) return "";
@@ -125,7 +129,7 @@ function cellXml(ref, value, format) {
 
 function columnWidth(column, rows, index) {
   const longest = rows.reduce((max, row) => {
-    const value = row[index];
+    const value = row[index] !== null && typeof row[index] === "object" ? row[index].value : row[index];
     const text = typeof value === "number" ? (Number.isInteger(value) ? String(value) : value.toFixed(3)) : String(value ?? "");
     return Math.max(max, ...text.split("\n").map((line) => line.length));
   }, column.header.length);
