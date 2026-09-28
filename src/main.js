@@ -11,6 +11,7 @@ import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
+import { exportTablesToXlsx } from "./export.js";
 
 const SERIES_MAX = 30;
 
@@ -23,6 +24,7 @@ const els = {
   tpsGranularity: document.getElementById("tpsGranularity"),
   themeToggle: document.getElementById("themeToggle"),
   loadBtn: document.getElementById("loadBtn"),
+  exportXlsxBtn: document.getElementById("exportXlsxBtn"),
   applyTpsGranularityBtn: document.getElementById("applyTpsGranularityBtn"),
   resetTpsGranularityBtn: document.getElementById("resetTpsGranularityBtn"),
   applyTimeBtn: document.getElementById("applyTimeBtn"),
@@ -358,6 +360,8 @@ async function loadResult() {
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
     renderAll();
     els.status.textContent += ` | Loaded in ${elapsed}s`;
+    els.exportXlsxBtn.disabled = false;
+    els.exportXlsxBtn.title = "Semua tabel panel ke satu file .xlsx, satu sheet per panel";
   } catch (error) {
     els.status.textContent = error.message;
     els.status.className = STATUS_ERR;
@@ -612,6 +616,13 @@ function initSortableTables() {
 
 els.loadBtn.addEventListener("click", loadResult);
 els.resultPath.addEventListener("keydown", (e) => { if (e.key === "Enter") loadResult(); });
+els.exportXlsxBtn.addEventListener("click", () => {
+  if (!state.data) return;
+  const sheetCount = exportTablesToXlsx();
+  if (!sheetCount) return;
+  els.status.className = STATUS_BASE;
+  els.status.textContent = `Exported ${sheetCount} tabel ke XLSX`;
+});
 els.themeToggle.addEventListener("click", toggleTheme);
 els.applyTpsGranularityBtn.addEventListener("click", applyTpsGranularity);
 els.resetTpsGranularityBtn.addEventListener("click", resetTpsGranularity);

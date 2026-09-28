@@ -97,5 +97,7 @@ export function renderLgHealthSection(els, start, end, applySelection) {
   drawMultiLineChart(els.lgCpuChart, applySelection("lgCpu", metricSeries("cpu", start, end)), start, end);
   drawMultiLineChart(els.lgMemoryChart, applySelection("lgMemory", metricSeries("memory", start, end)), start, end);
   drawMultiLineChart(els.lgDiskChart, applySelection("lgDisk", metricSeries("disk", start, end)), start, end);
-  renderHealthTable(els.lgHealthBody, hostSummaries(start, end));
+  // Disimpan supaya export XLSX memakai baris yang sama dengan tabel panel.
+  state.lgHealthRows = hostSummaries(start, end);
+  renderHealthTable(els.lgHealthBody, state.lgHealthRows);
 }

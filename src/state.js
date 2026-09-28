@@ -58,6 +58,7 @@ export const state = {
   groupFilter: "",
   siteScopeCpuRows: [],
   siteScopeMemoryRows: [],
+  lgHealthRows: [],
   errors: null,
   errorDbPath: "",
   errorFilter: { scriptId: "", code: "", message: "", start: null, end: null },

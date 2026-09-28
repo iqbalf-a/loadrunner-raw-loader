@@ -118,7 +118,7 @@ function groupFilterField(mode) {
   return mode === "detail" ? "name" : "groupName";
 }
 
-function filterByGroup(rows, mode) {
+export function filterByGroup(rows, mode) {
   const field = groupFilterField(mode);
   const re = field && state.groupFilter ? groupLikeToRegex(state.groupFilter) : null;
   return re ? rows.filter((row) => re.test(row[field] ?? "")) : rows;

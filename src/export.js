@@ -1,0 +1,119 @@
+import { state, sortRows } from "./state.js";
+import { filterByGroup } from "./tables.js";
+import { buildXlsx } from "./xlsx.js";
+
+// Satu sheet per panel tabel, nama sheet = judul panel tanpa akhiran "(Table)"/"(Chart + Table)"
+// supaya muat di batas 31 karakter Excel. Isinya semua baris seperti di modal Show All: filter
+// group dan urutan kolom yang sedang aktif ikut terbawa, tidak dipotong ke 20 baris.
+const col = (header, key, format = "text") => ({ header, key, format });
+
+function granularityTag() {
+  return `@${state.appliedTpsGranularity}s`;
+}
+
+const TX_COLUMNS = [
+  col("Transaction", "name"), col("Group", (tx) => tx.groupName ?? "-"),
+  col("Min (s)", "min", "dec3"), col("Avg (s)", "avg", "dec3"), col("Max (s)", "max", "dec3"),
+  col("Std Deviation (s)", "stdDeviation", "dec3"),
+  col("P90 (s)", "percentile90", "dec3"), col("P95 (s)", "percentile95", "dec3"), col("P99 (s)", "percentile99", "dec3"),
+  col("Success", "success", "int"), col("Fail", "fail", "int"), col("Total", "samples", "int"),
+];
+
+function tpsColumns(nameHeader, withGroup) {
+  return [
+    col(nameHeader, "name"),
+    ...(withGroup ? [col("Group", (tx) => tx.groupName ?? "-")] : []),
+    col(`Min TPS ${granularityTag()}`, "minTps", "dec3"),
+    col("Avg TPS", "avgTps", "dec3"),
+    col(`Max TPS ${granularityTag()}`, "maxTps", "dec3"),
+    col("Points", "points", "int"),
+  ];
+}
+
+const SITESCOPE_COLUMNS = [
+  col("Host", "host"), col("Min (%)", "min", "dec3"), col("Avg (%)", "avg", "dec3"), col("Max (%)", "max", "dec3"),
+];
+
+const LG_COLUMNS = [
+  col("Load Generator", "host"), col("Status", "status"),
+  col("CPU Avg (%)", "cpuAvg", "dec2"), col("CPU Max (%)", "cpuMax", "dec2"),
+  col("Memory Avg (%)", "memoryAvg", "dec2"), col("Memory Max (%)", "memoryMax", "dec2"),
+  col("Disk Avg (%)", "diskAvg", "dec2"), col("Disk Max (%)", "diskMax", "dec2"),
+];
+
+// Di tabel, Iteration dan Time cuma menampilkan kemunculan pertama dan sisanya di tooltip. Di
+// Excel tidak ada tooltip, jadi rentangnya dijadikan kolom sendiri.
+const ERROR_COLUMNS = [
+  col("Script", "scriptName"), col("Code", "errorCode", "int"),
+  col("API Code", "apiCode", "int"), col("API", "apiPath"), col("API URL", "apiUrl"),
+  col("Message", (row) => String(row.message ?? "").trim()),
+  col("Count", "count", "int"), col("VUsers", "vusers", "int"),
+  col("First Iteration", "firstIteration", "int"), col("Last Iteration", "lastIteration", "int"),
+  col("Iterations", "iterations", "int"),
+  col("Injector", (row) => (row.injectors ?? "").replaceAll(",", ", ")),
+  col("First Time", "firstTime"), col("Last Time", "lastTime"),
+];
+
+function sheet(name, columns, rows) {
+  return {
+    name,
+    columns,
+    rows: rows.map((row) => columns.map(({ key }) => (typeof key === "function" ? key(row) : row[key]) ?? null)),
+  };
+}
+
+function tableSheet(name, columns, rows, tableKey, mode) {
+  return sheet(name, columns, sortRows(filterByGroup(rows ?? [], mode), state.sort[tableKey]));
+}
+
+export function collectTableSheets() {
+  const sheets = [];
+  if (state.data) {
+    sheets.push(
+      tableSheet("Transactions Summary (BP)", TX_COLUMNS, state.transactions, "tx", "transaction"),
+      tableSheet("Transactions Summary (RPS_)", TX_COLUMNS, state.rpsTransactions, "txRps", "transaction"),
+      tableSheet("TPS", tpsColumns("Transaction", true), state.tpsSummary, "tpsSummary", "transaction"),
+      tableSheet("RPS", tpsColumns("API", true), state.tpsSummaryApi, "tpsSummaryApi", "api"),
+      tableSheet("TPS Detail", tpsColumns("BP Group", false), state.tpsDetail, "tpsDetail", "detail"),
+      sheet("TPS Overall", tpsColumns("", false).slice(1), [state.tpsOverall]),
+      tableSheet("SiteScope CPU Overall", SITESCOPE_COLUMNS, state.siteScopeCpuRows, "siteScopeCpu", "sitescope"),
+      tableSheet("SiteScope Memory Overall", SITESCOPE_COLUMNS, state.siteScopeMemoryRows, "siteScopeMemory", "sitescope"),
+      sheet("Load Generator Summary", LG_COLUMNS, sortRows(state.lgHealthRows ?? [], state.sort.lgHealth)),
+    );
+  }
+  // Errors bisa dimuat dari SqliteDb.db tanpa result, jadi sheet-nya berdiri sendiri.
+  if (state.errors?.available) {
+    sheets.push(sheet("Errors", ERROR_COLUMNS, sortRows(state.errors.rows ?? [], state.sort.errors)));
+  }
+  return sheets;
+}
+
+// "<nomor run>_<nama scenario>.xlsx": folder RawResults_463 + scenario "Load Test MCM_3" menjadi
+// "463_Load Test MCM_3.xlsx". Nomor run diambil dari angka di akhir nama folder result.
+function exportFileName() {
+  const result = state.data?.result;
+  const folder = String(result?.resultDir ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+  const runNumber = folder.match(/(\d+)$/)?.[1] ?? folder;
+  const scenarioName = result?.scenario?.sessionName ?? "";
+  const base = [runNumber, scenarioName].filter(Boolean).join("_") || "loadrunner-errors";
+  return `${base}.xlsx`.replace(/[\\/:*?"<>|]+/g, "_");
+}
+
+// Mengembalikan jumlah sheet yang ditulis; 0 berarti belum ada tabel untuk diekspor, null berarti
+// dibatalkan di dialog konfirmasi.
+export function exportTablesToXlsx() {
+  const sheets = collectTableSheets();
+  if (!sheets.length) return 0;
+  // Tombolnya di top bar, dekat Load Result, jadi mudah terklik tanpa sengaja.
+  const summary = sheets.map((s) => `- ${s.name} (${s.rows.length} baris)`).join("\n");
+  if (!window.confirm(`Download ${exportFileName()}?\n\n${sheets.length} sheet:\n${summary}`)) return null;
+  const url = URL.createObjectURL(buildXlsx(sheets));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exportFileName();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return sheets.length;
+}
