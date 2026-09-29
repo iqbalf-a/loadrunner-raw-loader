@@ -270,7 +270,7 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
   }
 }
 
-export async function queryTransactions(session, requestedStart, requestedEnd, limit = 0, offset = 0, namePrefix = "") {
+export async function queryTransactions(session, requestedStart, requestedEnd, limit = 0, offset = 0, namePrefix = "", nameFilter = null) {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
@@ -297,7 +297,8 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
       current.samples = current.success + current.fail;
       byName.set(name, current);
     }
-    const filtered = namePrefix ? [...byName.values()].filter((tx) => tx.name.toLowerCase().startsWith(namePrefix.toLowerCase())) : [...byName.values()];
+    const keep = nameFilter ? nameFilterPredicate(nameFilter) : nameMatcher(namePrefix);
+    const filtered = [...byName.values()].filter((tx) => keep(tx.name));
     const all = filtered.sort((a, b) => a.name.localeCompare(b.name));
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLimit = Number(limit) > 0 ? Number(limit) : all.length;
@@ -307,18 +308,13 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
   }
 }
 
-export async function queryTpsSummary(session, requestedStart, requestedEnd, requestedGranularity, limit = 0, offset = 0, namePrefix = "") {
+export async function queryTpsSummary(session, requestedStart, requestedEnd, requestedGranularity, limit = 0, offset = 0, namePrefix = "", nameFilter = null) {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const granularity = Math.max(1, Number(requestedGranularity) || 10);
-  const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
-  const candidates = (graph?.measurements ?? [])
-    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
-    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
-    .filter((m) => !/exc/i.test(m.name))
-    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+  const candidates = tpsCandidates(result, namePrefix, nameFilter);
   const names = new Map(candidates.map((m) => [m.id, m.name]));
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 
@@ -373,13 +369,56 @@ export async function queryTpsSummary(session, requestedStart, requestedEnd, req
   }
 }
 
-function tpsCandidates(result, namePrefix) {
+// Konvensi script tim: transaksi yang tidak boleh ikut dihitung diberi postfix "_exc". Nama RPS_
+// mendapat tambahan "_<BP>_<script>_<n>" di belakangnya (contoh RPS_Update_exc_BP163_Maker_13),
+// jadi yang dicari adalah potongan "_exc" utuh -- diikuti "_" atau akhir nama -- bukan sekadar
+// akhiran. Nama yang cuma mengandung huruf "exc" (misalnya BP_EXCHANGE_RATE) tetap dihitung.
+const EXCLUDED_TRANSACTION = /_exc(_|$)/i;
+
+function isExcludedTransaction(name) {
+  return EXCLUDED_TRANSACTION.test(name);
+}
+
+// Filter nama transaksi: tanpa "%" berarti prefix ("RPS_BP" = semua yang diawali RPS_BP), dengan
+// "%" berarti wildcard penuh seperti LIKE ("%MCM%"). Tidak membedakan huruf besar/kecil.
+function nameMatcher(namePrefix) {
+  if (!namePrefix) return () => true;
+  if (!namePrefix.includes("%")) {
+    const prefix = namePrefix.toLowerCase();
+    return (name) => name.toLowerCase().startsWith(prefix);
+  }
+  const escaped = namePrefix.replace(/[.+^${}()|[\]\\?*]/g, "\\$&").replace(/%/g, ".*");
+  const pattern = new RegExp(`^${escaped}$`, "i");
+  return (name) => pattern.test(name);
+}
+
+function nameFilterPredicate(nameFilter) {
+  // names: daftar nama persis (dipakai tabel di bawah grafik response time untuk seri terpilih).
+  if (nameFilter.names) {
+    const names = new Set(nameFilter.names);
+    return (name) => names.has(name);
+  }
+  const includes = nameFilter.include.map(nameMatcher);
+  const excludes = nameFilter.exclude.map(nameMatcher);
+  return (name) => (!includes.length || includes.some((matches) => matches(name)))
+    && !excludes.some((matches) => matches(name));
+}
+
+// nameFilter { include: [...], exclude: [...] } dari filter panel TPS/RPS. Transaksi ikut kalau
+// cocok salah satu pola include (include kosong = semua) dan tidak cocok satu pun pola exclude.
+// Aturan _exc bawaan tidak dipakai di sini: default exclude panel sudah memuatnya dan user boleh
+// mengubahnya. Tanpa nameFilter, perilakunya tetap seperti semula: prefix + aturan _exc.
+function tpsCandidates(result, namePrefix, nameFilter = null) {
   const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
-  return (graph?.measurements ?? [])
-    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
-    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
-    .filter((m) => !/exc/i.test(m.name))
-    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+  const measurements = graph?.measurements ?? [];
+  if (nameFilter) {
+    const keep = nameFilterPredicate(nameFilter);
+    return measurements.filter((m) => keep(m.name));
+  }
+  const matches = nameMatcher(namePrefix);
+  return measurements
+    .filter((m) => !isExcludedTransaction(m.name))
+    .filter((m) => matches(m.name));
 }
 
 // TPS Detail: same Min/Avg/Max/Points as queryTpsSummary, but rolled up per BP group instead of
@@ -387,14 +426,14 @@ function tpsCandidates(result, namePrefix) {
 // totals (not a sum of their already-computed Min/Max), so Max here is a real, physically-possible
 // peak — the group's actual combined throughput at one point in time — not an overstated sum of
 // peaks that happened at different times (see .claude/memory/tps-max-granularity.md).
-export async function queryTpsDetailSummary(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP") {
+export async function queryTpsDetailSummary(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP", nameFilter = null) {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const granularity = Math.max(1, Number(requestedGranularity) || 10);
-  const candidates = tpsCandidates(result, namePrefix);
-  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+  const candidates = tpsCandidates(result, namePrefix, nameFilter);
+  if (!candidates.length) return { start, end, granularity, transactions: 0, total: 0, rows: [] };
   const groupOf = new Map(candidates.map((m) => [m.id, resolveGroupName(m.name, result.scriptGroups) ?? "-"]));
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
@@ -441,7 +480,7 @@ export async function queryTpsDetailSummary(session, requestedStart, requestedEn
       };
     }).sort((a, b) => a.name.localeCompare(b.name));
 
-    return { start, end, granularity, total: rows.length, rows };
+    return { start, end, granularity, transactions: candidates.length, total: rows.length, rows };
   } finally {
     connection.closeSync();
   }
@@ -462,7 +501,7 @@ export async function queryTpsDetailSeries(session, requestedStart, requestedEnd
   // Group labels the caller wants included regardless of volume ranking (picked via search in the
   // chart's series selector), same role as queryTpsSeries's extraNames but keyed by group label.
   const extraNames = new Set(options.extraNames ?? []);
-  const candidates = tpsCandidates(result, namePrefix);
+  const candidates = tpsCandidates(result, namePrefix, options.nameFilter);
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
   const groupOf = new Map(candidates.map((m) => [m.id, resolveGroupName(m.name, result.scriptGroups) ?? "-"]));
   const allLabels = new Set(groupOf.values());
@@ -526,14 +565,14 @@ export async function queryTpsDetailSeries(session, requestedStart, requestedEnd
 // TPS Overall: every candidate transaction combined into ONE series (sum of bucket totals across
 // all of them, per bucket), then Min/Avg/Max/Points measured on that combined series. This is a
 // single line/row, so summary and series are returned together instead of two endpoints.
-export async function queryTpsOverall(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP") {
+export async function queryTpsOverall(session, requestedStart, requestedEnd, requestedGranularity, namePrefix = "BP", nameFilter = null) {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
   const end = Math.max(start, Math.min(duration || Number.MAX_SAFE_INTEGER, Number.isFinite(requestedEnd) ? requestedEnd : duration));
   const granularity = Math.max(1, Number(requestedGranularity) || 10);
-  const candidates = tpsCandidates(result, namePrefix);
-  if (!candidates.length) return { start, end, granularity, minTps: 0, avgTps: 0, maxTps: 0, points: 0, series: [] };
+  const candidates = tpsCandidates(result, namePrefix, nameFilter);
+  if (!candidates.length) return { start, end, granularity, transactions: 0, minTps: 0, avgTps: 0, maxTps: 0, points: 0, series: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
   const connection = await openConnection(databasePath);
@@ -551,6 +590,8 @@ export async function queryTpsOverall(session, requestedStart, requestedEnd, req
     const total = values.reduce((sum, value) => sum + value, 0);
     return {
       start, end, granularity,
+      // Jumlah transaksi yang lolos filter nama, supaya panel bisa menunjukkan filter-nya kena apa.
+      transactions: candidates.length,
       minTps: values.length ? Math.min(...values) / granularity : 0,
       avgTps: total / windowSeconds,
       maxTps: values.length ? Math.max(...values) / granularity : 0,
@@ -581,9 +622,14 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
   // chart's series selector, so it may fall outside the top-maxSeries-by-volume pool).
   const extraNames = new Set(options.extraNames ?? []);
   const graph = result.graphs.find((g) => g.type === "es_tr_response_time");
-  const candidates = (graph?.measurements ?? []).filter((m) => !namePrefix || m.name.startsWith(namePrefix));
+  // Dengan nameFilter (filter Include/Exclude panel), prefix diabaikan. Tanpa nameFilter tetap
+  // prefix peka huruf besar/kecil seperti semula.
+  const keep = options.nameFilter ? nameFilterPredicate(options.nameFilter) : (name) => !namePrefix || name.startsWith(namePrefix);
+  const candidates = (graph?.measurements ?? []).filter((m) => keep(m.name));
   const names = new Map(candidates.map((m) => [m.id, m.name]));
-  if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
+  // Semua nama yang lolos filter, untuk pencarian di pemilih seri grafik.
+  const allNames = candidates.map((m) => m.name);
+  if (!candidates.length) return { start, end, granularity, total: 0, names: allNames, rows: [] };
 
   const databasePath = path.join(CACHE_DIR, `${session.key}.duckdb`);
   const connection = await openConnection(databasePath);
@@ -600,25 +646,31 @@ export async function queryResponseTimeSeries(session, requestedStart, requested
     const rankedIds = new Set(ranked.map((r) => r.measurement_id));
     const extraIds = candidates.filter((m) => extraNames.has(m.name) && !rankedIds.has(m.id)).map((m) => m.id);
     const selectedIds = [...ranked.map((r) => r.measurement_id), ...extraIds];
-    if (!selectedIds.length) return { start, end, granularity, total: candidates.length, rows: [] };
+    if (!selectedIds.length) return { start, end, granularity, total: candidates.length, names: allNames, rows: [] };
 
     const selectedIdsSql = selectedIds.join(",");
+    // Alias bucket sengaja tidak dinamai elapsed_seconds: di GROUP BY, DuckDB membaca nama itu
+    // sebagai kolom mentah, sehingga setiap sample keluar sendiri-sendiri dengan x bucket yang sama
+    // -- grafik jadi garis tegak dan melengkung mundur karena banyak titik di satu posisi waktu.
     const rows = await queryRows(connection, `
       SELECT measurement_id,
-        floor((elapsed_seconds - $start) / $granularity) * $granularity + $start AS elapsed_seconds,
+        floor((elapsed_seconds - $start) / $granularity) * $granularity + $start AS bucket_start,
         avg(value) AS value
       FROM rows
       WHERE graph_type = 'es_tr_response_time' AND elapsed_seconds BETWEEN $start AND $end
         AND measurement_id IN (${selectedIdsSql})
-      GROUP BY measurement_id, elapsed_seconds
-      ORDER BY measurement_id, elapsed_seconds`, { start, end, granularity });
+      GROUP BY measurement_id, bucket_start`, { start, end, granularity });
 
+    // Urutan seri mengikuti peringkat (terbesar dulu, lalu extraNames), supaya pemilih seri di
+    // client yang mengambil 10 seri pertama benar-benar mendapat 10 teratas.
+    const rank = new Map(selectedIds.map((id, index) => [id, index]));
+    rows.sort((a, b) => rank.get(a.measurement_id) - rank.get(b.measurement_id) || a.bucket_start - b.bucket_start);
     return {
-      start, end, granularity, total: candidates.length,
+      start, end, granularity, total: candidates.length, names: allNames,
       rows: rows.map((row) => ({
         measurementId: row.measurement_id,
         name: names.get(row.measurement_id) ?? String(row.measurement_id),
-        elapsedSeconds: row.elapsed_seconds,
+        elapsedSeconds: row.bucket_start,
         value: row.value,
       })),
     };
@@ -638,12 +690,7 @@ export async function queryTpsSeries(session, requestedStart, requestedEnd, requ
   // Names the caller wants included regardless of volume ranking (e.g. picked via search in the
   // chart's series selector, so it may fall outside the top-maxSeries-by-volume pool).
   const extraNames = new Set(options.extraNames ?? []);
-  const graph = result.graphs.find((g) => g.type === "es_tr_tprange_pass");
-  const candidates = (graph?.measurements ?? [])
-    // "_exc"-suffixed measurements are LoadRunner's auto-generated exception/error sub-transactions
-    // for the SAME business step, not distinct transactions — summing them into TPS double-counts.
-    .filter((m) => !/exc/i.test(m.name))
-    .filter((m) => !namePrefix || m.name.toLowerCase().startsWith(namePrefix.toLowerCase()));
+  const candidates = tpsCandidates(result, namePrefix, options.nameFilter);
   const names = new Map(candidates.map((m) => [m.id, m.name]));
   if (!candidates.length) return { start, end, granularity, total: 0, rows: [] };
 

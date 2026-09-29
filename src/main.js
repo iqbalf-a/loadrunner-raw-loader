@@ -3,10 +3,12 @@ import {
   state,
   autoGranularitySeconds,
   resolveGroup,
+  sortRows,
   buildTransactions,
+  DEFAULT_TPS_FILTERS,
 } from "./state.js";
 import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
-import { renderMetrics, renderTable, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
+import { renderMetrics, renderTable, renderTransactionRows, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
@@ -43,6 +45,8 @@ const els = {
   tpsDetailBody: document.getElementById("tpsDetailBody"),
   showAllTpsDetailBtn: document.getElementById("showAllTpsDetailBtn"),
   tpsOverallBody: document.getElementById("tpsOverallBody"),
+  rpsOverallChart: document.getElementById("rpsOverallChart"),
+  rpsOverallBody: document.getElementById("rpsOverallBody"),
   tpsModal: document.getElementById("tpsModal"),
   tpsModalTitle: document.getElementById("tpsModalTitle"),
   tpsModalHead: document.getElementById("tpsModalHead"),
@@ -142,6 +146,103 @@ function renderTpsCharts(start, end) {
     color: "#00bf8f",
     points: (state.tpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
   }], start, end);
+  drawRpsOverallChart(start, end);
+}
+
+function drawRpsOverallChart(start, end) {
+  drawMultiLineChart(els.rpsOverallChart, [{
+    name: "Overall RPS",
+    color: "#2f7df6",
+    points: (state.rpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
+  }], start, end);
+}
+
+function renderRpsOverallPanel() {
+  renderTpsOverall(els.rpsOverallBody, state.rpsOverall);
+}
+
+function applyRpsOverallPayload(payload) {
+  state.rpsOverall = payload;
+  state.rpsOverallSeriesRows = payload.series;
+}
+
+// Query string filter Include/Exclude sebuah panel (lihat DEFAULT_TPS_FILTERS untuk daftarnya).
+function nameFilterParams(key) {
+  const filter = state.tpsFilters[key];
+  return `&include=${encodeURIComponent(filter.include)}&exclude=${encodeURIComponent(filter.exclude)}`;
+}
+
+// Jumlah transaksi yang lolos filter tiap panel, ditampilkan di bar filter-nya.
+const TPS_FILTER_COUNTS = {
+  rt: () => state.responseTimeNames.length,
+  rtApi: () => state.responseTimeApiNames.length,
+  tx: () => state.transactions.length,
+  txRps: () => state.rpsTransactions.length,
+  // TPS Detail satu baris per group, jadi yang dihitung transaksi anggota group-nya.
+  tpsDetail: () => state.tpsDetailTransactions ?? 0,
+  tps: () => state.tpsSummary.length,
+  rps: () => state.tpsSummaryApi.length,
+  tpsOverall: () => state.tpsOverall.transactions ?? 0,
+  rpsOverall: () => state.rpsOverall.transactions ?? 0,
+};
+
+const FILTER_INPUT_CLASS = "w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]";
+const FILTER_LABEL_CLASS = "block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase";
+
+// Bar filter disisipkan di bawah judul setiap panel bertanda data-tps-filter, supaya markup-nya
+// tidak diulang di setiap panel di index.html.
+function mountTpsFilterBars() {
+  document.querySelectorAll("[data-tps-filter]").forEach((panel) => {
+    const key = panel.dataset.tpsFilter;
+    const bar = document.createElement("div");
+    bar.className = "tps-filter-bar flex flex-wrap items-end gap-2.5 px-4 py-2.5 border-b border-(--line)";
+    bar.innerHTML = `
+      <div class="min-w-55">
+        <label class="${FILTER_LABEL_CLASS}" style="font-family: var(--font-mono);">Include</label>
+        <input data-filter-field="include" type="text" spellcheck="false" class="${FILTER_INPUT_CLASS}" style="font-family: var(--font-mono);">
+      </div>
+      <div class="flex-1 min-w-65">
+        <label class="${FILTER_LABEL_CLASS}" style="font-family: var(--font-mono);">Exclude</label>
+        <input data-filter-field="exclude" type="text" spellcheck="false" class="${FILTER_INPUT_CLASS}" style="font-family: var(--font-mono);">
+      </div>
+      <button data-filter-action="apply" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
+      <button data-filter-action="reset" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
+      <span data-filter-count class="h-7.5 leading-7.5 text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);"></span>
+      <div class="basis-full text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Beberapa pola dipisah koma. % = wildcard, tanpa % = awalan, _ dibaca apa adanya. Ikut kalau cocok salah satu Include dan tidak cocok satu pun Exclude.</div>
+    `;
+    panel.querySelector(".panel-title").after(bar);
+    const input = (field) => bar.querySelector(`[data-filter-field="${field}"]`);
+    const apply = () => applyTpsFilter(key, { include: input("include").value.trim(), exclude: input("exclude").value.trim() });
+    bar.querySelector('[data-filter-action="apply"]').addEventListener("click", apply);
+    bar.querySelector('[data-filter-action="reset"]').addEventListener("click", () => applyTpsFilter(key, { ...DEFAULT_TPS_FILTERS[key] }));
+    bar.querySelectorAll("input").forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); }));
+  });
+  syncTpsFilterBars();
+}
+
+function syncTpsFilterBars() {
+  document.querySelectorAll("[data-tps-filter]").forEach((panel) => {
+    const key = panel.dataset.tpsFilter;
+    const filter = state.tpsFilters[key];
+    panel.querySelector('[data-filter-field="include"]').value = filter.include;
+    panel.querySelector('[data-filter-field="exclude"]').value = filter.exclude;
+    panel.querySelector("[data-filter-count]").textContent = state.data ? `${TPS_FILTER_COUNTS[key]()} transaksi cocok` : "";
+  });
+}
+
+// Filter ini mengubah query summary, series, dan overall sekaligus, jadi dashboard di-refresh
+// penuh seperti Apply filter waktu.
+async function applyTpsFilter(key, filter) {
+  state.tpsFilters[key] = filter;
+  if (!state.data) {
+    syncTpsFilterBars();
+    return;
+  }
+  await withLoadTimer("Applying transaction filter", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
+    renderAll();
+    els.status.textContent = `Filter ${key} applied: include "${filter.include || "(semua)"}", exclude "${filter.exclude || "(tidak ada)"}"`;
+  });
 }
 
 function renderTpsSummaryPanels() {
@@ -150,6 +251,8 @@ function renderTpsSummaryPanels() {
   renderTpsSummaryTable(state.tpsSummaryApi, els.tpsApiBody, els.showAllTpsApiBtn, "tpsSummaryApi", "api");
   renderTpsSummaryTable(state.tpsDetail, els.tpsDetailBody, els.showAllTpsDetailBtn, "tpsDetail", "detail");
   renderTpsOverall(els.tpsOverallBody, state.tpsOverall);
+  renderRpsOverallPanel();
+  syncTpsFilterBars();
 }
 
 function applySelection(key, allSeries) {
@@ -178,6 +281,60 @@ function seriesFromFlatRows(rows) {
   }));
 }
 
+// Tabel di bawah grafik response time: statistik (seperti Transactions Summary) hanya untuk seri
+// yang sedang tampil di grafik -- default 10 teratas, atau yang dicentang di pemilih seri.
+const RT_TABLES = [
+  { key: "responseTime", tableKey: "rtTable", body: "rtBody" },
+  { key: "responseTimeApi", tableKey: "rtApiTable", body: "rtApiBody" },
+];
+const rtTableRequests = new Map();
+
+function renderRtTable({ key, tableKey, body }) {
+  // Urutan baris = urutan seri di grafik (peringkat terbesar dulu), bukan urutan centang.
+  const order = new Map((chartAllSeries[key] ?? []).map((series, index) => [series.name, index]));
+  const rows = [...state.rtTableRows[key]].sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+  const tbody = document.getElementById(body);
+  tbody.innerHTML = rows.length
+    ? renderTransactionRows(sortRows(rows, state.sort[tableKey]))
+    : `<tr><td colspan="12" class="px-3.5 py-3 text-left muted">Tidak ada seri yang dipilih.</td></tr>`;
+}
+
+// Statistiknya diambil dari server hanya kalau seri terpilih atau rentang waktunya berubah; render
+// ulang biasa (resize, ganti tema, sort) cukup memakai baris yang sudah ada.
+async function updateRtTables() {
+  if (!state.data) return;
+  const duration = state.data.result.scenario.durationSeconds || 0;
+  await Promise.all(RT_TABLES.map(async (table) => {
+    const names = state.chartSelections[table.key] ?? [];
+    const params = new URLSearchParams({
+      session: state.data.session,
+      start: String(state.appliedStart),
+      end: String(state.appliedEnd || duration),
+      offset: "0",
+      names: JSON.stringify(names),
+    });
+    const requestKey = params.toString();
+    if (rtTableRequests.get(table.key) === requestKey) {
+      renderRtTable(table);
+      return;
+    }
+    rtTableRequests.set(table.key, requestKey);
+    try {
+      const response = names.length ? await fetch(`/api/transactions?${params}`) : null;
+      const payload = response ? await response.json() : { rows: [] };
+      if (response && !response.ok) throw new Error(payload.error || "Response time table query failed");
+      // Respons yang datang terlambat untuk pilihan lama dibuang.
+      if (rtTableRequests.get(table.key) !== requestKey) return;
+      state.rtTableRows[table.key] = payload.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
+    } catch (error) {
+      rtTableRequests.delete(table.key);
+      state.rtTableRows[table.key] = [];
+      els.status.textContent = error.message;
+    }
+    renderRtTable(table);
+  }));
+}
+
 function renderCharts(transactions, start, end) {
   drawMultiLineChart(
     els.transactionRtChart,
@@ -201,6 +358,7 @@ function renderCharts(transactions, start, end) {
   renderSiteScopeSection(els, start, end, applySelection);
   renderLgHealthSection(els, start, end, applySelection);
   ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach(refreshExpandedChartSelector);
+  updateRtTables();
 }
 
 const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
@@ -389,22 +547,23 @@ async function refreshDashboardData(onQueryProgress) {
   let completedQueries = 0;
   const queries = [
     fetch(`/api/dashboard?${params}`),
-    fetch(`/api/transactions?${params}&offset=0&namePrefix=BP`),
-    fetch(`/api/transactions?${params}&offset=0&namePrefix=RPS_`),
-    fetch(`/api/tps-summary?${params}&offset=0&namePrefix=BP`),
-    fetch(`/api/tps-summary?${params}&offset=0&namePrefix=RPS_`),
-    fetch(`/api/response-time-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTime"))}`),
-    fetch(`/api/response-time-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTimeApi"))}`),
-    fetch(`/api/tps-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsTransaction"))}`),
-    fetch(`/api/tps-series?${params}&namePrefix=RPS_&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsApi"))}`),
-    fetch(`/api/tps-detail-summary?${params}&namePrefix=BP`),
-    fetch(`/api/tps-detail-series?${params}&namePrefix=BP&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsDetail"))}`),
-    fetch(`/api/tps-overall?${params}&namePrefix=BP`),
+    fetch(`/api/transactions?${params}&offset=0${nameFilterParams("tx")}`),
+    fetch(`/api/transactions?${params}&offset=0${nameFilterParams("txRps")}`),
+    fetch(`/api/tps-summary?${params}&offset=0${nameFilterParams("tps")}`),
+    fetch(`/api/tps-summary?${params}&offset=0${nameFilterParams("rps")}`),
+    fetch(`/api/response-time-series?${params}${nameFilterParams("rt")}&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTime"))}`),
+    fetch(`/api/response-time-series?${params}${nameFilterParams("rtApi")}&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("responseTimeApi"))}`),
+    fetch(`/api/tps-series?${params}${nameFilterParams("tps")}&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsTransaction"))}`),
+    fetch(`/api/tps-series?${params}${nameFilterParams("rps")}&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsApi"))}`),
+    fetch(`/api/tps-detail-summary?${params}${nameFilterParams("tpsDetail")}`),
+    fetch(`/api/tps-detail-series?${params}${nameFilterParams("tpsDetail")}&maxSeries=${SERIES_MAX}&extraNames=${encodeURIComponent(extraNamesParam("tpsDetail"))}`),
+    fetch(`/api/tps-overall?${params}${nameFilterParams("tpsOverall")}`),
+    fetch(`/api/tps-overall?${params}${nameFilterParams("rpsOverall")}`),
   ];
   const [
     dashboardResponse, transactionsResponse, rpsTransactionsResponse, tpsSummaryResponse, tpsSummaryApiResponse,
     responseTimeResponse, responseTimeApiResponse, tpsSeriesResponse, tpsApiSeriesResponse,
-    tpsDetailSummaryResponse, tpsDetailSeriesResponse, tpsOverallResponse,
+    tpsDetailSummaryResponse, tpsDetailSeriesResponse, tpsOverallResponse, rpsOverallResponse,
   ] = await Promise.all(queries.map((query) => query.then((response) => {
     onQueryProgress?.(completedQueries += 1, queries.length);
     return response;
@@ -421,6 +580,7 @@ async function refreshDashboardData(onQueryProgress) {
   const tpsDetailSummary = await tpsDetailSummaryResponse.json();
   const tpsDetailSeries = await tpsDetailSeriesResponse.json();
   const tpsOverall = await tpsOverallResponse.json();
+  const rpsOverall = await rpsOverallResponse.json();
   if (!dashboardResponse.ok) throw new Error(dashboard.error || "Dashboard query failed");
   if (!transactionsResponse.ok) throw new Error(transactions.error || "Transaction query failed");
   if (!rpsTransactionsResponse.ok) throw new Error(rpsTransactions.error || "RPS transaction query failed");
@@ -433,6 +593,7 @@ async function refreshDashboardData(onQueryProgress) {
   if (!tpsDetailSummaryResponse.ok) throw new Error(tpsDetailSummary.error || "TPS detail summary query failed");
   if (!tpsDetailSeriesResponse.ok) throw new Error(tpsDetailSeries.error || "TPS detail series query failed");
   if (!tpsOverallResponse.ok) throw new Error(tpsOverall.error || "TPS overall query failed");
+  if (!rpsOverallResponse.ok) throw new Error(rpsOverall.error || "RPS overall query failed");
 
   const graphs = new Map(result.graphs.map((graph) => [graph.type, graph]));
   for (const graph of result.graphs) graph.rows = [];
@@ -461,12 +622,16 @@ async function refreshDashboardData(onQueryProgress) {
   state.tpsSummaryApi = tpsSummaryApi.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
   state.responseTimeRows = responseTime.rows;
   state.responseTimeApiRows = responseTimeApi.rows;
+  state.responseTimeNames = responseTime.names ?? [];
+  state.responseTimeApiNames = responseTimeApi.names ?? [];
   state.tpsSeriesRows = tpsSeries.rows;
   state.tpsApiSeriesRows = tpsApiSeries.rows;
   state.tpsDetail = tpsDetailSummary.rows;
+  state.tpsDetailTransactions = tpsDetailSummary.transactions ?? 0;
   state.tpsDetailSeriesRows = tpsDetailSeries.rows;
   state.tpsOverall = tpsOverall;
   state.tpsOverallSeriesRows = tpsOverall.series;
+  applyRpsOverallPayload(rpsOverall);
   state.seriesCountByType = dashboard.seriesCountByType ?? {};
   const capHint = (total) => (total > SERIES_MAX ? `(top ${Math.min(total, SERIES_MAX)} of ${total} by volume)` : "");
   els.seriesCountRt.textContent = capHint(responseTime.total ?? 0);
@@ -669,7 +834,8 @@ document.addEventListener("keydown", (event) => {
   else if (!els.tpsModal.hidden) closeTpsModal(els);
   else closeExpandedPanel();
 });
-async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingNames) {
+// filterKey: panel yang memakai filter Include/Exclude (lihat DEFAULT_TPS_FILTERS); kosong berarti pakai namePrefix.
+async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingNames, filterKey = "") {
   if (!state.data) return;
   const { session, result } = state.data;
   const duration = result.scenario.durationSeconds || 0;
@@ -682,7 +848,7 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
     maxSeries: String(SERIES_MAX),
     extraNames: JSON.stringify([...(state.chartSelections[key] ?? []), ...missingNames]),
   });
-  const response = await fetch(`${endpoint}?${params}`);
+  const response = await fetch(`${endpoint}?${params}${filterKey ? nameFilterParams(filterKey) : ""}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Series query failed");
   state[rowsField] = payload.rows;
@@ -692,26 +858,27 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
   const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
   if (key === "responseTime") {
-    configureChartSelector(key, () => state.transactions.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing));
+    configureChartSelector(key, () => state.responseTimeNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing, "rt"));
   } else if (key === "responseTimeApi") {
-    configureChartSelector(key, () => state.rpsTransactions.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing));
+    configureChartSelector(key, () => state.responseTimeApiNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing, "rtApi"));
   } else if (key === "tpsTransaction") {
     configureChartSelector(key, () => state.tpsSummary.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing, "tps"));
   } else if (key === "tpsApi") {
     configureChartSelector(key, () => state.tpsSummaryApi.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing, "rps"));
   } else if (key === "tpsDetail") {
     configureChartSelector(key, () => state.tpsDetail.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing, "tpsDetail"));
   } else {
     configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected);
   }
 });
 
 setupChartPanelActions();
+mountTpsFilterBars();
 applyTheme(localStorage.getItem("loadrunnerTheme") === "dark" ? "dark" : "light");
 els.resultPath.value = localStorage.getItem("loadrunnerLastPath") || "";
 syncToolbarHeight();

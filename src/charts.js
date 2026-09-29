@@ -1,5 +1,6 @@
 import { formatHms, currentCssVar } from "./format.js";
 import { graphByType, rowsByMeasurement } from "./state.js";
+import { composeChartImage } from "./chart-snapshot.js";
 
 const chartInstances = new WeakMap();
 const chartSelectors = new Map();
@@ -87,7 +88,7 @@ export function chartFileName(panel) {
 
 // Dikonfirmasi dulu: tombolnya bersebelahan dengan Expand dan Copy, jadi salah klik gampang
 // terjadi dan hasilnya berkas nyasar di folder Downloads tanpa disadari.
-export function downloadChartPng(panel) {
+export async function downloadChartPng(panel) {
   const canvas = panel.querySelector("canvas");
   const chart = canvas ? chartInstances.get(canvas) : null;
   if (!chart) return;
@@ -95,10 +96,12 @@ export function downloadChartPng(panel) {
   const fileName = chartFileName(panel);
   if (!window.confirm(`Download grafik ini sebagai PNG?\n\n${fileName}`)) return;
 
+  const url = URL.createObjectURL(await composeChartImage(panel, chart));
   const link = document.createElement("a");
   link.download = fileName;
-  link.href = chart.toBase64Image("image/png", 1);
+  link.href = url;
   link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function flashButtonLabel(button, text) {
@@ -119,10 +122,9 @@ export async function copyChartImage(panel, button) {
   if (!chart) return;
 
   try {
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((value) => (value ? resolve(value) : reject(new Error("Gagal membaca grafik"))), "image/png");
-    });
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    // Blob-nya diserahkan sebagai Promise: menyusun gambar butuh waktu, dan clipboard.write harus
+    // dipanggil selagi klik user masih dianggap aktif oleh browser.
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": composeChartImage(panel, chart) })]);
     flashButtonLabel(button, "Copied!");
   } catch {
     flashButtonLabel(button, "Gagal");

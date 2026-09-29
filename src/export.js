@@ -20,6 +20,16 @@ const TX_COLUMNS = [
   col("Success", "success", "int"), col("Fail", "fail", "int"), col("Total", "samples", "int"),
 ];
 
+// Kolom tabel RPS Overall: angkanya dari rumus yang sama dengan TPS Overall, hanya labelnya RPS.
+function rpsOverallColumns() {
+  return [
+    col(`Min RPS ${granularityTag()}`, "minTps", "dec3"),
+    col("Avg RPS", "avgTps", "dec3"),
+    col(`Max RPS ${granularityTag()}`, "maxTps", "dec3"),
+    col("Points", "points", "int"),
+  ];
+}
+
 function tpsColumns(nameHeader, withGroup) {
   return [
     col(nameHeader, "name"),
@@ -54,6 +64,18 @@ const ERROR_COLUMNS = [
   col("Injector", (row) => (row.injectors ?? "").replaceAll(",", ", ")),
   col("First Time", "firstTime"), col("Last Time", "lastTime"),
 ];
+
+const TPS_FILTER_LABELS = {
+  tx: "Transactions Summary (BP)", txRps: "Transactions Summary (RPS_)",
+  rt: "Response Time By Transaction", rtApi: "Response Time By API", tps: "TPS", rps: "RPS",
+  tpsDetail: "TPS Detail", tpsOverall: "TPS Overall", rpsOverall: "RPS Overall",
+};
+
+function tpsFilterText(key) {
+  const filter = state.tpsFilters[key];
+  if (!filter) return "";
+  return `Include: ${filter.include || "(semua)"}; Exclude: ${filter.exclude || "(tidak ada)"}`;
+}
 
 function rangeText(from, to, format) {
   return `${format(from)} - ${format(to)}`;
@@ -92,6 +114,7 @@ function overviewSheet() {
     ["Filtered Range (clock)", rangeText(start, end, formatClockAt)],
     ["Granularity (s)", int(state.appliedTpsGranularity)],
     ["Filter Group Name", state.groupFilter || "(tidak ada)"],
+    ...Object.entries(TPS_FILTER_LABELS).map(([key, label]) => [`${label} Filter`, tpsFilterText(key)]),
     ["Transactions (BP)", int(state.transactions.length)],
     ["Success", int(metrics.success)],
     ["Fail", int(metrics.fail)],
@@ -128,6 +151,7 @@ export function collectTableSheets() {
       tableSheet("RPS", tpsColumns("API", true), state.tpsSummaryApi, "tpsSummaryApi", "api"),
       tableSheet("TPS Detail", tpsColumns("BP Group", false), state.tpsDetail, "tpsDetail", "detail"),
       sheet("TPS Overall", tpsColumns("", false).slice(1), [state.tpsOverall]),
+      sheet("RPS Overall", rpsOverallColumns(), [state.rpsOverall]),
       tableSheet("SiteScope CPU Overall", SITESCOPE_COLUMNS, state.siteScopeCpuRows, "siteScopeCpu", "sitescope"),
       tableSheet("SiteScope Memory Overall", SITESCOPE_COLUMNS, state.siteScopeMemoryRows, "siteScopeMemory", "sitescope"),
       sheet("Load Generator Summary", LG_COLUMNS, sortRows(state.lgHealthRows ?? [], state.sort.lgHealth)),
@@ -138,6 +162,35 @@ export function collectTableSheets() {
     sheets.push(sheet("Errors", ERROR_COLUMNS, sortRows(state.errors.rows ?? [], state.sort.errors)));
   }
   return sheets;
+}
+
+// Tabel yang ikut di gambar PNG sebuah grafik: hanya baris yang seri-nya dicentang di grafik itu.
+// names[i] adalah nama seri baris ke-i, dipakai untuk mencocokkan warna garis di gambar.
+const CHART_TABLES = {
+  responseTime: () => ({ columns: TX_COLUMNS, rows: state.rtTableRows.responseTime, nameKey: "name", sortKey: "rtTable" }),
+  responseTimeApi: () => ({ columns: TX_COLUMNS, rows: state.rtTableRows.responseTimeApi, nameKey: "name", sortKey: "rtApiTable" }),
+  tpsTransaction: () => ({ columns: tpsColumns("Transaction", true), rows: state.tpsSummary, nameKey: "name", sortKey: "tpsSummary" }),
+  tpsApi: () => ({ columns: tpsColumns("API", true), rows: state.tpsSummaryApi, nameKey: "name", sortKey: "tpsSummaryApi" }),
+  tpsDetail: () => ({ columns: tpsColumns("BP Group", false), rows: state.tpsDetail, nameKey: "name", sortKey: "tpsDetail" }),
+  tpsOverall: () => ({ columns: tpsColumns("", false).slice(1), rows: [state.tpsOverall] }),
+  rpsOverall: () => ({ columns: rpsOverallColumns(), rows: [state.rpsOverall] }),
+  siteScopeCpu: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeCpuRows, nameKey: "host", sortKey: "siteScopeCpu" }),
+  siteScopeMemory: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeMemoryRows, nameKey: "host", sortKey: "siteScopeMemory" }),
+  lgCpu: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
+  lgMemory: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
+  lgDisk: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
+};
+
+export function chartPanelTable(key) {
+  const spec = CHART_TABLES[key]?.();
+  if (!spec) return null;
+  let rows = spec.rows ?? [];
+  if (spec.nameKey) {
+    const selected = new Set(state.chartSelections[key] ?? []);
+    rows = sortRows(rows.filter((row) => selected.has(row[spec.nameKey])), state.sort[spec.sortKey]);
+  }
+  if (!rows.length) return null;
+  return { ...sheet("", spec.columns, rows), names: rows.map((row) => (spec.nameKey ? row[spec.nameKey] : null)) };
 }
 
 // "<nomor run>_<nama scenario>.xlsx": folder RawResults_463 + scenario "Load Test MCM_3" menjadi

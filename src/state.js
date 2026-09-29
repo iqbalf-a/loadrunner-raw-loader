@@ -2,6 +2,25 @@ import { resolveGroupName } from "../group-utils.js";
 
 export const DEFAULT_GRAPH_GRANULARITY_SECONDS = 4;
 export const TRANSACTION_SUMMARY_LIMIT = 20;
+// Filter Include/Exclude panel TPS, RPS, TPS Overall, dan RPS Overall. Pola dipisah koma, % sebagai
+// wildcard, tanpa % berarti awalan. Default exclude mengikuti konvensi script tim: transaksi yang
+// tidak dihitung diberi postfix _exc (pada nama RPS_ postfix itu diikuti akhiran _<BP>_<script>_<n>).
+const DEFAULT_EXCLUDE = "%_exc, %_exc_%";
+// Transactions Summary sejak awal menampilkan transaksi _exc juga (response time-nya tetap
+// berguna), jadi default exclude-nya kosong supaya angkanya tidak berubah.
+export const DEFAULT_TPS_FILTERS = {
+  tx: { include: "BP%", exclude: "" },
+  txRps: { include: "RPS_%", exclude: "" },
+  // Grafik response time memilih 10 seri dengan total response time terbesar; tanpa exclude _exc
+  // yang terpilih hampir semuanya transaksi _exc, jadi default-nya dibuang.
+  rt: { include: "BP%", exclude: DEFAULT_EXCLUDE },
+  rtApi: { include: "RPS_%", exclude: DEFAULT_EXCLUDE },
+  tpsDetail: { include: "BP%", exclude: DEFAULT_EXCLUDE },
+  tps: { include: "BP%", exclude: DEFAULT_EXCLUDE },
+  rps: { include: "RPS_%", exclude: DEFAULT_EXCLUDE },
+  tpsOverall: { include: "BP%", exclude: DEFAULT_EXCLUDE },
+  rpsOverall: { include: "RPS_BP%", exclude: DEFAULT_EXCLUDE },
+};
 
 // Aturan granularity default LoadRunner Analysis: pangkat 2 terkecil (dalam detik) yang membuat
 // grafik muat dalam TARGET_GRAPH_POINTS titik. Dicocokkan terhadap LRA pada run 8148 detik, yang
@@ -37,8 +56,15 @@ export const state = {
   tpsSummaryApi: [],
   tpsDetail: [],
   tpsDetailSeriesRows: [],
+  responseTimeNames: [],
+  // Statistik seri yang sedang tampil di grafik response time, untuk tabel di bawah grafiknya.
+  rtTableRows: { responseTime: [], responseTimeApi: [] },
+  responseTimeApiNames: [],
   tpsOverall: { minTps: 0, avgTps: 0, maxTps: 0, points: 0 },
   tpsOverallSeriesRows: [],
+  rpsOverall: { transactions: 0, minTps: 0, avgTps: 0, maxTps: 0, points: 0 },
+  rpsOverallSeriesRows: [],
+  tpsFilters: structuredClone(DEFAULT_TPS_FILTERS),
   chartSelections: {
     responseTime: [],
     responseTimeApi: [],
@@ -69,6 +95,9 @@ export const state = {
     tpsSummary: { key: "name", dir: "asc" },
     tpsSummaryApi: { key: "name", dir: "asc" },
     tpsDetail: { key: "name", dir: "asc" },
+    // Key kosong = urutan seri di grafik (terbesar dulu) sampai user mengklik header kolom.
+    rtTable: { key: "", dir: "asc" },
+    rtApiTable: { key: "", dir: "asc" },
     siteScopeCpu: { key: "host", dir: "asc" },
     siteScopeMemory: { key: "host", dir: "asc" },
     lgHealth: { key: "host", dir: "asc" },

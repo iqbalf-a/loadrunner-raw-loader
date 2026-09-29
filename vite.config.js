@@ -16,6 +16,22 @@ function parseExtraNames(url) {
   }
 }
 
+// Filter Include/Exclude panel TPS/RPS: pola dipisah koma. null kalau kedua parameter tidak dikirim,
+// supaya pemanggil lain tetap memakai filter prefix bawaan.
+function parseNameFilter(url) {
+  if (url.searchParams.has("names")) {
+    try {
+      const names = JSON.parse(url.searchParams.get("names"));
+      if (Array.isArray(names)) return { include: [], exclude: [], names: names.filter((name) => typeof name === "string") };
+    } catch {
+      // Parameter rusak: lanjut ke filter include/exclude di bawah.
+    }
+  }
+  if (!url.searchParams.has("include") && !url.searchParams.has("exclude")) return null;
+  const list = (name) => (url.searchParams.get(name) ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  return { include: list("include"), exclude: list("exclude") };
+}
+
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.statusCode = status;
@@ -81,7 +97,7 @@ export default defineConfig({
             if (!session) throw new Error("Parameter session wajib diisi.");
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
-            sendJson(res, 200, await queryTransactions(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || ""));
+            sendJson(res, 200, await queryTransactions(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || "", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }
@@ -93,7 +109,7 @@ export default defineConfig({
             if (!session) throw new Error("Parameter session wajib diisi.");
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
-            sendJson(res, 200, await queryTpsSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || ""));
+            sendJson(res, 200, await queryTpsSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || "", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }
@@ -105,7 +121,7 @@ export default defineConfig({
             if (!session) throw new Error("Parameter session wajib diisi.");
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
-            sendJson(res, 200, await queryTpsDetailSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP"));
+            sendJson(res, 200, await queryTpsDetailSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }
@@ -121,6 +137,7 @@ export default defineConfig({
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "BP",
               extraNames: parseExtraNames(url),
+              nameFilter: parseNameFilter(url),
             }));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -133,7 +150,7 @@ export default defineConfig({
             if (!session) throw new Error("Parameter session wajib diisi.");
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
-            sendJson(res, 200, await queryTpsOverall(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP"));
+            sendJson(res, 200, await queryTpsOverall(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }
@@ -149,6 +166,7 @@ export default defineConfig({
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "",
               extraNames: parseExtraNames(url),
+              nameFilter: parseNameFilter(url),
             }));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -195,6 +213,7 @@ export default defineConfig({
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "",
               extraNames: parseExtraNames(url),
+              nameFilter: parseNameFilter(url),
             }));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
