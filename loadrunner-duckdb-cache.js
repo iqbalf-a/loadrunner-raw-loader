@@ -270,7 +270,7 @@ export async function queryDashboard(session, requestedStart, requestedEnd, requ
   }
 }
 
-export async function queryTransactions(session, requestedStart, requestedEnd, limit = 0, offset = 0, namePrefix = "", nameFilter = null) {
+export async function queryTransactions(session, requestedStart, requestedEnd, limit = 0, offset = 0, namePrefix = "", nameFilter = null, order = "name") {
   const { result } = session;
   const duration = Number(result.scenario.durationSeconds) || 0;
   const start = Math.max(0, Number.isFinite(requestedStart) ? requestedStart : 0);
@@ -299,7 +299,9 @@ export async function queryTransactions(session, requestedStart, requestedEnd, l
     }
     const keep = nameFilter ? nameFilterPredicate(nameFilter) : nameMatcher(namePrefix);
     const filtered = [...byName.values()].filter((tx) => keep(tx.name));
-    const all = filtered.sort((a, b) => a.name.localeCompare(b.name));
+    const all = order === "volume"
+      ? filtered.sort((a, b) => (b.total ?? 0) - (a.total ?? 0))
+      : filtered.sort((a, b) => a.name.localeCompare(b.name));
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLimit = Number(limit) > 0 ? Number(limit) : all.length;
     return { start, end, total: all.length, rows: all.slice(safeOffset, safeOffset + safeLimit) };

@@ -18,6 +18,17 @@ function parseExtraNames(url) {
 
 // Filter Include/Exclude panel TPS/RPS: pola dipisah koma. null kalau kedua parameter tidak dikirim,
 // supaya pemanggil lain tetap memakai filter prefix bawaan.
+// Normalize filter: accept {include: "str", exclude: "str"} or {include: [...], exclude: [...]}
+function normalizeNameFilter(filter) {
+  if (!filter) return null;
+  const toArray = (val) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.filter((v) => typeof v === "string");
+    return String(val).split(",").map((v) => v.trim()).filter(Boolean);
+  };
+  return { include: toArray(filter.include), exclude: toArray(filter.exclude) };
+}
+
 function parseNameFilter(url) {
   if (url.searchParams.has("names")) {
     try {
@@ -92,12 +103,35 @@ export default defineConfig({
         });
         server.middlewares.use("/api/transactions", async (req, res) => {
           try {
-            const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
+            // Support both GET (query params) and POST (JSON body)
+            let session, start, end, limit, offset, namePrefix, nameFilter, order;
+            if (req.method === "POST") {
+              let body = "";
+              for await (const chunk of req) body += chunk;
+              const parsed = body ? JSON.parse(body) : {};
+              session = parsed.session;
+              start = parsed.start;
+              end = parsed.end;
+              limit = parsed.limit;
+              offset = parsed.offset;
+              namePrefix = parsed.namePrefix;
+              nameFilter = normalizeNameFilter(parsed.nameFilter);
+              order = parsed.order;
+            } else {
+              const url = new URL(req.url ?? "", "http://127.0.0.1");
+              session = url.searchParams.get("session");
+              start = url.searchParams.get("start");
+              end = url.searchParams.get("end");
+              limit = url.searchParams.get("limit");
+              offset = url.searchParams.get("offset");
+              namePrefix = url.searchParams.get("namePrefix");
+              nameFilter = parseNameFilter(url);
+              order = url.searchParams.get("order");
+            }
             if (!session) throw new Error("Parameter session wajib diisi.");
             const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
             const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
-            sendJson(res, 200, await queryTransactions(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || "", parseNameFilter(url)));
+            sendJson(res, 200, await queryTransactions(cached, Number(start), Number(end), Number(limit), Number(offset), namePrefix || "", nameFilter, order || "name"));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
           }

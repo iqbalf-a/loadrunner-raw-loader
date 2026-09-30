@@ -178,13 +178,116 @@ body.transaction-modal-open {
 
 .chart-series-selector-heading {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 8px;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.chart-series-clear-btn {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--chart-text);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.chart-series-clear-btn:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+/* Toolbar di sisi kiri tabel panel: tempat memilih seri grafik dan mengosongkan semua pilihan. */
+.series-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.series-toolbar-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--chart-text);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.series-toolbar-btn:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.series-toolbar-count {
+  white-space: nowrap;
+}
+
+/* Ditulis singkat di toolbar kalau user mencentang seri ke-11: batas 10 seri per grafik. */
+.series-toolbar-count-warn {
+  color: var(--signal);
+}
+
+.series-toolbar-search {
+  width: 220px;
+  max-width: 45vw;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.series-pick-head,
+.series-pick-cell {
+  width: 34px;
+  padding: 0 0 0 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.series-pick-head {
+  vertical-align: middle;
+}
+
+.series-pick-cell {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.series-pick-head input,
+.series-pick-cell input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--signal);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.series-pick-cell input:disabled {
+  cursor: progress;
 }
 
 .chart-series-search {

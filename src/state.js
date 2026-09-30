@@ -65,17 +65,19 @@ export const state = {
   rpsOverall: { transactions: 0, minTps: 0, avgTps: 0, maxTps: 0, points: 0 },
   rpsOverallSeriesRows: [],
   tpsFilters: structuredClone(DEFAULT_TPS_FILTERS),
+  // null = user belum pernah memilih, jadi default 10 seri teratas yang berlaku. [] = "Deselect All"
+  // yang disengaja dan tidak boleh ditimpa default. Lihat resolveSelection().
   chartSelections: {
-    responseTime: [],
-    responseTimeApi: [],
-    tpsTransaction: [],
-    tpsApi: [],
-    tpsDetail: [],
-    siteScopeCpu: [],
-    siteScopeMemory: [],
-    lgCpu: [],
-    lgMemory: [],
-    lgDisk: [],
+    responseTime: null,
+    responseTimeApi: null,
+    tpsTransaction: null,
+    tpsApi: null,
+    tpsDetail: null,
+    siteScopeCpu: null,
+    siteScopeMemory: null,
+    lgCpu: null,
+    lgMemory: null,
+    lgDisk: null,
   },
   seriesCountByType: {},
   appliedStart: 0,
@@ -128,6 +130,18 @@ export function resolveGroup(name) {
 export function groupLikeToRegex(pattern) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   return new RegExp("^" + escaped.replace(/%/g, ".*") + "$", "i");
+}
+
+// Seri yang sedang digambar sebuah panel. Default-nya `limit` seri teratas, tapi hanya selama user
+// belum pernah memilih sendiri: null = belum ada pilihan, [] = "Deselect All" yang disengaja.
+// Tanpa pembedaan itu, grafik akan memaksa 10 seri teratas lagi begitu semua centang dilepas.
+export function resolveSelection(key, names, limit) {
+  let selected = state.chartSelections[key];
+  if (selected == null) {
+    selected = names.slice(0, limit);
+    state.chartSelections[key] = selected;
+  }
+  return selected.filter((name) => names.includes(name));
 }
 
 export function graphByType(type) {

@@ -1,5 +1,6 @@
 import { fmtNumber, fmtSeconds, fmtMs, escapeHtml, formatHms } from "./format.js";
 import { state, graphByType, inRange, groupLikeToRegex, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
+import { seriesPickCell, seriesSearchQuery } from "./charts.js";
 
 // Dipakai kartu Overview dan sheet Overview di export XLSX, supaya angkanya selalu sama.
 export function overviewMetrics(transactions, start, end) {
@@ -43,9 +44,12 @@ export function renderTable(transactions, tbody, showAllBtn, tableKey) {
   showAllBtn.textContent = `Show All (${rows.length})`;
 }
 
-export function renderTransactionRows(transactions) {
+// `tbody` hanya diisi di panel yang punya kolom centang seri, supaya kolom checkbox grafik ikut
+// dibuat. Modal dan tabel ringkasan tidak punya kolom itu, jadi biarkan null.
+export function renderTransactionRows(transactions, tbody = null) {
   return transactions.map((tx) => `
     <tr class="hover:bg-(--surface)">
+      ${tbody ? seriesPickCell(tbody, tx.name) : ""}
       <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${escapeHtml(tx.name)}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap muted">${escapeHtml(tx.groupName ?? "-")}</td>
       <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${fmtSeconds(tx.min)}</td>
@@ -173,18 +177,32 @@ const TPS_CELL_RENDERERS = {
   max: (row) => tpsCell(row.max.toFixed(3)),
 };
 
-export function renderTpsSummaryRows(rows, mode = "transaction") {
+export function renderTpsSummaryRows(rows, mode = "transaction", tbody = null) {
   const columns = TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
   return rows.map((tx) => `
     <tr class="hover:bg-(--surface)">
+      ${tbody ? seriesPickCell(tbody, tx.name) : ""}
       ${columns.map(([key]) => TPS_CELL_RENDERERS[key](tx)).join("")}
     </tr>
   `).join("");
 }
 
+// Isian search di toolbar panel dibuang dari baris tabel, supaya nama yang dicari tidak tenggelam
+// di antara baris lain. Panel tanpa search (modal, tabel ringkasan) tidak terpengaruh.
+function matchesSeriesSearch(key, name) {
+  const query = seriesSearchQuery(key).toLowerCase();
+  return !query || String(name ?? "").toLowerCase().includes(query);
+}
+
+function panelSeriesKey(tbody) {
+  return tbody.closest("[data-chart-selector]")?.dataset.chartSelector ?? "";
+}
+
 export function renderTpsSummaryTable(rows, tbody, showAllBtn, tableKey, mode = "transaction") {
-  const filtered = sortRows(filterByGroup(rows, mode), state.sort[tableKey]);
-  tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode);
+  const key = panelSeriesKey(tbody);
+  const searched = rows.filter((tx) => matchesSeriesSearch(key, tx.name));
+  const filtered = sortRows(filterByGroup(searched, mode), state.sort[tableKey]);
+  tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode, tbody);
   showAllBtn.hidden = filtered.length === 0;
   showAllBtn.textContent = `Show All (${filtered.length})`;
 }

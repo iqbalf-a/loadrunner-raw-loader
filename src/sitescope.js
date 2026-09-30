@@ -1,6 +1,6 @@
 import { percentile } from "./format.js";
 import { state, graphByType, measurementName, inRange, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
-import { drawMultiLineChart } from "./charts.js";
+import { drawMultiLineChart, seriesPickCell, seriesSearchQuery } from "./charts.js";
 
 export function hostFromSiteScopeName(name) {
   const match = String(name ?? "").match(/\/APIGW\/([^/]+)/);
@@ -56,13 +56,16 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
   const hostRows = [...valuesByHost.entries()].map(([host, values]) => ({ host, ...summarizeValues(values) }));
   // Disimpan supaya modal "Show All" memakai baris yang sama dengan tabel panel.
   if (stateKey) state[stateKey] = hostRows;
-  const sorted = sortRows(hostRows, state.sort[tableKey]);
+  const key = target.closest("[data-chart-selector]")?.dataset.chartSelector ?? "";
+  const query = seriesSearchQuery(key).toLowerCase();
+  const sorted = sortRows(hostRows.filter((row) => !query || row.host.toLowerCase().includes(query)), state.sort[tableKey]);
   if (showAllBtn) {
     showAllBtn.hidden = sorted.length === 0;
     showAllBtn.textContent = `Show All (${sorted.length})`;
   }
   target.innerHTML = sorted.slice(0, showAllBtn ? TRANSACTION_SUMMARY_LIMIT : sorted.length).map((row) => `
       <tr class="hover:bg-(--surface)">
+        ${seriesPickCell(target, row.host)}
         <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${row.host}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.min.toFixed(3)}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.avg.toFixed(3)}</td>

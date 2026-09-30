@@ -1,12 +1,27 @@
 import { formatHms, currentCssVar } from "./format.js";
-import { graphByType, rowsByMeasurement } from "./state.js";
+import { state, graphByType, resolveSelection, rowsByMeasurement } from "./state.js";
 import { composeChartImage } from "./chart-snapshot.js";
 
 const chartInstances = new WeakMap();
 const chartSelectors = new Map();
 const searchQueries = new Map();
+const seriesSearch = new Map();
+const searchListeners = new Set();
 export const MAX_SELECTED_SERIES = 10;
 const SEARCH_RESULTS_LIMIT = 150;
+// Batas baris tabel ketika kotak search panel response time diisi: statistik per nama diambil dari
+// server, jadi jangan sampai satu ketikan memunculkan ratusan baris sekaligus.
+export const SEARCH_ROWS_LIMIT = 100;
+
+// Isian kotak search di toolbar tabel. Chart-nya sendiri tidak berubah karena search ini; yang
+// berubah cuma baris mana yang tampil di tabel, jadi renderer tabel yang membaca nilainya.
+export function seriesSearchQuery(key) {
+  return (seriesSearch.get(key) ?? "").trim();
+}
+
+export function onSeriesSearchChange(listener) {
+  searchListeners.add(listener);
+}
 
 // getAllNames: full searchable universe (may include series with no data loaded yet).
 // getLoadedNames: series currently fetched and ready to plot (the default top-N pool).
@@ -31,11 +46,7 @@ function renderSelectorList(panel) {
 
   const allNames = config.getAllNames();
   const loadedNames = new Set(config.getLoadedNames());
-  let selected = config.getSelected().filter((name) => allNames.includes(name));
-  if (!selected.length && loadedNames.size) {
-    selected = [...loadedNames].slice(0, MAX_SELECTED_SERIES);
-    config.setSelected(selected);
-  }
+  const selected = resolveSelection(key, allNames, MAX_SELECTED_SERIES);
 
   const query = (searchQueries.get(key) ?? "").trim().toLowerCase();
   const visibleNames = query
@@ -50,6 +61,9 @@ function renderChartSelector(panel) {
   const key = panel.dataset.chartSelector;
   const config = chartSelectors.get(key);
   if (!config) return;
+  // Panel yang tabelnya sudah jadi pemilih seri (kolom checkbox) tidak butuh daftar centang
+  // di atas grafik -- panel tanpa tabel, seperti chart Load Generator, tetap memakainya.
+  if (panel.querySelector("table[data-table]")) return;
   let selector = panel.querySelector(".chart-series-selector");
   if (!selector) {
     selector = document.createElement("div");
@@ -57,6 +71,7 @@ function renderChartSelector(panel) {
     selector.innerHTML = `
       <div class="chart-series-selector-heading">
         <span>Select up to ${MAX_SELECTED_SERIES} series</span>
+        <button type="button" class="chart-series-clear-btn" title="Kosongkan semua pilihan">Deselect All</button>
         <span class="chart-series-selector-count"></span>
       </div>
       <input type="search" class="chart-series-search" placeholder="Cari transaksi...">
@@ -65,6 +80,11 @@ function renderChartSelector(panel) {
     panel.querySelector(".panel-title")?.after(selector);
     selector.querySelector(".chart-series-search").addEventListener("input", (event) => {
       searchQueries.set(key, event.target.value);
+      renderSelectorList(panel);
+    });
+    selector.querySelector(".chart-series-clear-btn").addEventListener("click", (event) => {
+      event.stopPropagation();
+      config.setSelected([]);
       renderSelectorList(panel);
     });
   }
@@ -174,12 +194,171 @@ export function setupChartPanelActions() {
     title.appendChild(actions);
     panel.dataset.actionsReady = "true";
   });
+  setupSeriesToolbars();
 }
 
+// Panel yang sedang di-expand memakai daftar centang di atas grafik supaya picker-nya kelihatan
+// lagi setiap kali panel dibuka ulang.
 export function refreshExpandedChartSelector(key) {
   const panel = document.querySelector(`.chart-panel.expanded[data-chart-selector="${key}"]`);
   if (panel) renderChartSelector(panel);
 }
+
+// Toolbar di sebelah kiri tabel panel: tombol Deselect All, hitungan seri yang sedang digambar,
+// dan kotak search. Dipasang sekali per panel yang punya tabel di bawah grafiknya.
+function setupSeriesToolbars() {
+  document.querySelectorAll(".chart-panel[data-chart-selector]").forEach((panel) => {
+    if (panel.dataset.seriesToolbarReady) return;
+    const table = panel.querySelector("table[data-table]");
+    const wrap = table?.parentElement;
+    if (!table || !wrap) return;
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "series-toolbar";
+    toolbar.innerHTML = `
+      <button type="button" class="series-toolbar-btn" data-series-action="clear" title="Kosongkan semua centang, grafik jadi kosong">Deselect All</button>
+      <span class="series-toolbar-count muted"></span>
+      <input type="search" class="series-toolbar-search" placeholder="Cari transaksi...">
+    `;
+    wrap.before(toolbar);
+
+    const key = panel.dataset.chartSelector;
+    const search = toolbar.querySelector(".series-toolbar-search");
+    // Search di panel response time menelusuri nama kandidat yang datanya dari server, jadi query
+    // ulang digagalkan sebentar supaya mengetik tidak memicu satu request per ketikan.
+    let debounce = 0;
+    search.addEventListener("input", (event) => {
+      seriesSearch.set(key, event.target.value);
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        for (const listener of searchListeners) listener();
+      }, 250);
+    });
+    toolbar.querySelector("[data-series-action='clear']").addEventListener("click", () => {
+      chartSelectors.get(key)?.setSelected([]);
+      refreshSeriesToolbars();
+    });
+
+    const headRow = table.querySelector("thead tr");
+    if (headRow) {
+      const head = document.createElement("th");
+      head.className = "series-pick-head";
+      head.title = "Pilih atau kosongkan semua baris di tabel ini";
+      const toggleAll = document.createElement("input");
+      toggleAll.type = "checkbox";
+      toggleAll.dataset.seriesAction = "toggle-all";
+      head.appendChild(toggleAll);
+      headRow.insertBefore(head, headRow.firstChild);
+    }
+    panel.dataset.seriesToolbarReady = "true";
+  });
+  refreshSeriesToolbars();
+}
+
+// Hitungan "n/10", centang header, dan centang tiap baris semuanya diturunkan dari state, jadi
+// cukup dipanggil ulang setiap render -- tidak perlu melacak checkbox mana yang diklik user.
+export function refreshSeriesToolbars() {
+  document.querySelectorAll(".series-toolbar").forEach((toolbar) => {
+    const panel = toolbar.closest("[data-chart-selector]");
+    const key = panel?.dataset.chartSelector;
+    if (!key) return;
+    const selected = new Set(state.chartSelections[key] ?? []);
+    toolbar.querySelector(".series-toolbar-search").value = seriesSearch.get(key) ?? "";
+    toolbar.querySelector(".series-toolbar-count").textContent = `${selected.size}/${MAX_SELECTED_SERIES} seri`;
+    const rows = [...panel.querySelectorAll("table[data-table] tbody [data-series-pick]")];
+    let picked = 0;
+    for (const input of rows) {
+      input.checked = selected.has(input.value);
+      if (input.checked) picked += 1;
+    }
+    const toggleAll = panel.querySelector("[data-series-action='toggle-all']");
+    if (toggleAll) {
+      toggleAll.checked = rows.length > 0 && picked === rows.length;
+      toggleAll.indeterminate = picked > 0 && picked < rows.length;
+    }
+  });
+}
+
+// Batas MAX_SELECTED_SERIES ada di UI karena satu grafik dengan 30 garis hanya jadi noise.
+// Centang yang ditolak kembali seperti semula, dan hitungan di toolbar sempat menuliskan
+// alasannya supaya user tahu itu bukan checkbox-nya yang rusak.
+function flashSeriesLimit(toolbar) {
+  const count = toolbar?.querySelector(".series-toolbar-count");
+  if (!count) return;
+  const original = count.textContent;
+  count.textContent = `maksimal ${MAX_SELECTED_SERIES} seri`;
+  count.classList.add("series-toolbar-count-warn");
+  setTimeout(() => {
+    count.textContent = original;
+    count.classList.remove("series-toolbar-count-warn");
+  }, 1400);
+}
+
+// Sel kolom pertama tabel: centang di sini yang menentukan seri mana yang digambar grafik panelnya.
+export function seriesPickCell(tbody, name) {
+  const key = tbody.closest("[data-chart-selector]")?.dataset.chartSelector;
+  const checked = key ? (state.chartSelections[key] ?? []).includes(name) : false;
+  return `<td class="series-pick-cell"><input type="checkbox" data-series-pick value="${escapeHtml(name)}"${checked ? " checked" : ""} title="Tampilkan seri ini di grafik"></td>`;
+}
+
+document.addEventListener("change", async (event) => {
+  const toggleAll = event.target.closest("[data-series-action='toggle-all']");
+  if (toggleAll) {
+    const panel = toggleAll.closest("[data-chart-selector]");
+    const key = panel?.dataset.chartSelector;
+    const config = chartSelectors.get(key);
+    if (!config) return;
+    const names = [...panel.querySelectorAll("table[data-table] tbody [data-series-pick]")].map((input) => input.value);
+    let rejected = false;
+    if (!toggleAll.checked) {
+      config.setSelected([]);
+    } else if (names.length <= MAX_SELECTED_SERIES) {
+      toggleAll.disabled = true;
+      try {
+        await config.ensureLoaded?.(names);
+        config.setSelected(names);
+      } finally {
+        toggleAll.disabled = false;
+      }
+    } else {
+      toggleAll.checked = false;
+      rejected = true;
+    }
+    // Pesan batas dipasang setelah refreshSeriesToolbars(), karena fungsi itu menulis ulang hitungan.
+    refreshSeriesToolbars();
+    if (rejected) flashSeriesLimit(toggleAll.closest(".series-toolbar"));
+    return;
+  }
+
+  const input = event.target.closest("tbody [data-series-pick]");
+  if (!input) return;
+  const panel = input.closest("[data-chart-selector]");
+  const key = panel?.dataset.chartSelector;
+  const config = chartSelectors.get(key);
+  if (!config) return;
+  const current = config.getSelected();
+  const selected = input.checked
+    ? [...new Set([...current, input.value])]
+    : current.filter((name) => name !== input.value);
+  const rejected = selected.length > MAX_SELECTED_SERIES;
+  if (rejected) input.checked = false;
+  else {
+    const loaded = new Set(config.getLoadedNames());
+    const missing = selected.filter((name) => !loaded.has(name));
+    if (missing.length && config.ensureLoaded) {
+      input.disabled = true;
+      try {
+        await config.ensureLoaded(missing);
+      } finally {
+        input.disabled = false;
+      }
+    }
+    config.setSelected(selected);
+  }
+  // Pesan batas dipasang setelah refreshSeriesToolbars(), karena fungsi itu menulis ulang hitungan.
+  refreshSeriesToolbars();
+  if (rejected) flashSeriesLimit(panel.querySelector(".series-toolbar"));
+});
 
 document.addEventListener("change", async (event) => {
   const input = event.target.closest(".chart-series-selector input[type='checkbox']");

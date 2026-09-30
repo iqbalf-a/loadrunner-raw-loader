@@ -3,12 +3,13 @@ import {
   state,
   autoGranularitySeconds,
   resolveGroup,
+  resolveSelection,
   sortRows,
   buildTransactions,
   DEFAULT_TPS_FILTERS,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, MAX_SELECTED_SERIES } from "./charts.js";
-import { renderMetrics, renderTable, renderTransactionRows, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent } from "./tables.js";
+import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, refreshSeriesToolbars, onSeriesSearchChange, seriesSearchQuery, SEARCH_ROWS_LIMIT, MAX_SELECTED_SERIES } from "./charts.js";
+import { renderMetrics, renderTable, renderTransactionRows, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent, filterByGroup } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
 import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
@@ -80,6 +81,8 @@ const els = {
   applyGroupFilterBtn: document.getElementById("applyGroupFilterBtn"),
   resetGroupFilterBtn: document.getElementById("resetGroupFilterBtn"),
   showAllTransactionsBtn: document.getElementById("showAllTransactionsBtn"),
+  showAllRtBtn: document.getElementById("showAllRtBtn"),
+  showAllRtApiBtn: document.getElementById("showAllRtApiBtn"),
   transactionModal: document.getElementById("transactionModal"),
   transactionModalTitle: document.getElementById("transactionModalTitle"),
   transactionModalTable: document.getElementById("transactionModalTable"),
@@ -258,12 +261,8 @@ function renderTpsSummaryPanels() {
 function applySelection(key, allSeries) {
   chartAllSeries[key] = allSeries;
   const names = allSeries.map((s) => s.name);
-  let selected = (state.chartSelections[key] ?? []).filter((name) => names.includes(name));
-  if (!selected.length && names.length) {
-    selected = names.slice(0, MAX_SELECTED_SERIES);
-    state.chartSelections[key] = selected;
-  }
-  return allSeries.filter((s) => selected.includes(s.name));
+  const selected = new Set(resolveSelection(key, names, MAX_SELECTED_SERIES));
+  return allSeries.filter((s) => selected.has(s.name));
 }
 
 function seriesFromFlatRows(rows) {
@@ -281,53 +280,100 @@ function seriesFromFlatRows(rows) {
   }));
 }
 
-// Tabel di bawah grafik response time: statistik (seperti Transactions Summary) hanya untuk seri
-// yang sedang tampil di grafik -- default 10 teratas, atau yang dicentang di pemilih seri.
+// Tabel di bawah grafik response time: daftar kandidat seri panel itu, satu baris per transaksi,
+// dengan centang di kolom הראשונה yang menentukan seri mana yang digambar. Kandidatnya SELURUH nama
+// yang lolos filter panel, bukan cuma top-N yang sudah digambar, supaya transaksi seperti BP195 yang
+
+// total response time-nya kecil tetap bisa difilter group dan dicentang. Grafik tetap hanya
+// menggambar MAX_SELECTED_SERIES seri, jadi tabel boleh lebih panjang dari grafik.
 const RT_TABLES = [
-  { key: "responseTime", tableKey: "rtTable", body: "rtBody" },
-  { key: "responseTimeApi", tableKey: "rtApiTable", body: "rtApiBody" },
+  { key: "responseTime", tableKey: "rtTable", body: "rtBody", names: () => state.responseTimeNames },
+  { key: "responseTimeApi", tableKey: "rtApiTable", body: "rtApiBody", names: () => state.responseTimeApiNames },
 ];
 const rtTableRequests = new Map();
+// Peringkat total response time per panel, diisi dari respons server di updateRtTables.
+const rtVolumeRank = { responseTime: new Map(), responseTimeApi: new Map() };
 
 function renderRtTable({ key, tableKey, body }) {
-  // Urutan baris = urutan seri di grafik (peringkat terbesar dulu), bukan urutan centang.
-  const order = new Map((chartAllSeries[key] ?? []).map((series, index) => [series.name, index]));
-  const rows = [...state.rtTableRows[key]].sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+  // Urutan baris = peringkat total response time terbesar dulu, bukan urutan centang. Peringkat
+  // ini ikut dari server, karena tabel sekarang memuat semua kandidat seri panel -- bukan cuma
+  // top-N yang sudah digambar -- jadi `chartAllSeries` tidak bisa lagi jadi acuan urutan.
+  const rank = rtVolumeRank[key];
+  const order = new Map([...rank.keys()].map((name, index) => [name, index]));
+  const allRows = filterByGroup(state.rtTableRows[key], "transaction")
+    .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
+  const query = seriesSearchQuery(key);
+  // Default: 30 baris pertama (TRANSACTION_SUMMARY_LIMIT = 20, tapi user minta 30).
+  // Kalau ada query search: tampilkan semua yang cocok (mirip renderTable).
+  const limit = query ? allRows.length : 30;
+  const displayRows = allRows.slice(0, limit);
   const tbody = document.getElementById(body);
-  tbody.innerHTML = rows.length
-    ? renderTransactionRows(sortRows(rows, state.sort[tableKey]))
-    : `<tr><td colspan="12" class="px-3.5 py-3 text-left muted">Tidak ada seri yang dipilih.</td></tr>`;
+  tbody.innerHTML = displayRows.length
+    ? renderTransactionRows(sortRows(displayRows, state.sort[tableKey]), tbody)
+    : `<tr><td colspan="13" class="px-3.5 py-3 text-left muted">${query ? `Tidak ada transaksi yang cocok dengan "${query}".` : "Belum ada data response time di rentang ini."}</td></tr>`;
+
+  // Show All button untuk tabel ini (mirip TPS table).
+  const showAllBtn = key === "responseTime" ? els.showAllRtBtn : els.showAllRtApiBtn;
+  if (showAllBtn) {
+    showAllBtn.hidden = allRows.length === 0;
+    showAllBtn.textContent = `Show All (${allRows.length})`;
+  }
 }
 
-// Statistiknya diambil dari server hanya kalau seri terpilih atau rentang waktunya berubah; render
-// ulang biasa (resize, ganti tema, sort) cukup memakai baris yang sudah ada.
+// Nama yang dikirim ke server: seluruh kandidat panel, dipersempit oleh kotak search kalau ada
+// isian. Tanpa isian search, daftar ini bisa ratusan nama -- ini yang membuat BP195 masuk
+// ke state.rtTableRows dan akhirnya cocok dengan filter group name.
+function rtRowNames(table) {
+  const query = seriesSearchQuery(table.key);
+  if (!query) return table.names();
+  const needle = query.toLowerCase();
+  return table.names()
+    .filter((name) => name.toLowerCase().includes(needle))
+    .slice(0, SEARCH_ROWS_LIMIT);
+}
+
+// Statistik diambil dari server hanya kalau daftar nama kandidat atau rentang waktunya berubah;
+// render ulang biasa (resize, ganti tema, sort) cukup memakai baris yang sudah ada.
+// Gunakan POST + body JSON (include/exclude) agar tidak kelewat batas URL seperti GET ?names=...
+// RT_TABLES keys ("responseTime", "responseTimeApi") != DEFAULT_TPS_FILTERS keys ("rt", "rtApi").
+const FILTER_KEY_MAP = { responseTime: "rt", responseTimeApi: "rtApi" };
 async function updateRtTables() {
   if (!state.data) return;
   const duration = state.data.result.scenario.durationSeconds || 0;
   await Promise.all(RT_TABLES.map(async (table) => {
-    const names = state.chartSelections[table.key] ?? [];
-    const params = new URLSearchParams({
+    const filterKey = FILTER_KEY_MAP[table.key];
+      const filter = state.tpsFilters[filterKey];
+    const body = {
       session: state.data.session,
-      start: String(state.appliedStart),
-      end: String(state.appliedEnd || duration),
-      offset: "0",
-      names: JSON.stringify(names),
-    });
-    const requestKey = params.toString();
+      start: state.appliedStart,
+      end: state.appliedEnd || duration,
+      offset: 0,
+      limit: 0,
+      order: "volume",
+      namePrefix: "",
+      nameFilter: filter ? { include: filter.include, exclude: filter.exclude } : null,
+    };
+    const requestKey = JSON.stringify(body);
     if (rtTableRequests.get(table.key) === requestKey) {
       renderRtTable(table);
       return;
     }
     rtTableRequests.set(table.key, requestKey);
     try {
-      const response = names.length ? await fetch(`/api/transactions?${params}`) : null;
-      const payload = response ? await response.json() : { rows: [] };
-      if (response && !response.ok) throw new Error(payload.error || "Response time table query failed");
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Response time table query failed");
       // Respons yang datang terlambat untuk pilihan lama dibuang.
       if (rtTableRequests.get(table.key) !== requestKey) return;
+      rtVolumeRank[table.key] = new Map(payload.rows.map((tx, index) => [tx.name, index]));
       state.rtTableRows[table.key] = payload.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
     } catch (error) {
       rtTableRequests.delete(table.key);
+      rtVolumeRank[table.key] = new Map();
       state.rtTableRows[table.key] = [];
       els.status.textContent = error.message;
     }
@@ -335,7 +381,7 @@ async function updateRtTables() {
   }));
 }
 
-function renderCharts(transactions, start, end) {
+async function renderCharts(transactions, start, end) {
   drawMultiLineChart(
     els.transactionRtChart,
     applySelection("responseTime", seriesFromFlatRows(state.responseTimeRows ?? [])),
@@ -358,7 +404,8 @@ function renderCharts(transactions, start, end) {
   renderSiteScopeSection(els, start, end, applySelection);
   renderLgHealthSection(els, start, end, applySelection);
   ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach(refreshExpandedChartSelector);
-  updateRtTables();
+  refreshSeriesToolbars();
+  await updateRtTables();
 }
 
 const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
@@ -401,8 +448,11 @@ function renderAll() {
   renderMetrics(els.metrics, transactions, start, end);
   renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
   renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
-  renderTpsSummaryPanels();
+  // Setelah renderCharts: centang di tabel TPS dan SiteScope mengikuti pilihan seri, jadi
+  // tabelnya harus digambar setelah applySelection() menentukan default 10 serinya.
   renderCharts(transactions, start, end);
+  renderTpsSummaryPanels();
+  refreshSeriesToolbars();
   renderErrors();
   els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
 }
@@ -663,6 +713,8 @@ function renderGroupFilteredTables() {
   renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
   renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
   renderTpsSummaryPanels();
+  // Group filter juga harus sampai ke panel response time.
+  RT_TABLES.forEach((table) => renderRtTable(table));
 }
 
 async function applyGroupFilter() {
@@ -797,6 +849,8 @@ els.applyGroupFilterBtn.addEventListener("click", applyGroupFilter);
 els.resetGroupFilterBtn.addEventListener("click", resetGroupFilter);
 els.showAllTransactionsBtn.addEventListener("click", () => openTransactionModal(els, buildTransactions(), "All Transactions (BP)", "tx"));
 els.showAllRpsTransactionsBtn.addEventListener("click", () => openTransactionModal(els, state.rpsTransactions, "All Transactions (RPS_)", "txRps"));
+els.showAllRtBtn.addEventListener("click", () => openTransactionModal(els, filterByGroup(state.rtTableRows.responseTime, "transaction"), "Response Time By Transaction", "rtTable"));
+els.showAllRtApiBtn.addEventListener("click", () => openTransactionModal(els, filterByGroup(state.rtTableRows.responseTimeApi, "transaction"), "Response Time By API", "rtApiTable"));
 els.closeTransactionModalBtn.addEventListener("click", () => closeTransactionModal(els));
 els.copyTransactionModalBtn.addEventListener("click", () => copyTableRows(els.transactionModalTable, els.copyTransactionModalBtn));
 els.transactionModal.addEventListener("click", (event) => {
@@ -844,10 +898,10 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
     start: String(state.appliedStart),
     end: String(state.appliedEnd || duration),
     granularity: String(state.appliedTpsGranularity),
-    namePrefix,
     maxSeries: String(SERIES_MAX),
     extraNames: JSON.stringify([...(state.chartSelections[key] ?? []), ...missingNames]),
   });
+
   const response = await fetch(`${endpoint}?${params}${filterKey ? nameFilterParams(filterKey) : ""}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Series query failed");
@@ -878,6 +932,7 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
 });
 
 setupChartPanelActions();
+onSeriesSearchChange(() => renderAll());
 mountTpsFilterBars();
 applyTheme(localStorage.getItem("loadrunnerTheme") === "dark" ? "dark" : "light");
 els.resultPath.value = localStorage.getItem("loadrunnerLastPath") || "";
