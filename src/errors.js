@@ -9,31 +9,48 @@ const MAX_FILLED_BUCKETS = 2000;
 const EMPTY_FILTER = { scriptId: "", code: "", message: "", start: null, end: null };
 const DB_PATH_STORAGE_KEY = "loadrunnerLastErrorDbPath";
 
-const els = {
-  dbPath: document.getElementById("errorDbPath"),
-  loadBtn: document.getElementById("loadErrorDbBtn"),
-  granularityLabel: document.getElementById("errorGranularityLabel"),
-  script: document.getElementById("errorScriptFilter"),
-  code: document.getElementById("errorCodeFilter"),
-  message: document.getElementById("errorMessageFilter"),
-  start: document.getElementById("errorStartTime"),
-  end: document.getElementById("errorEndTime"),
-  applyBtn: document.getElementById("applyErrorFilterBtn"),
-  resetBtn: document.getElementById("resetErrorFilterBtn"),
-  info: document.getElementById("errorInfo"),
-  rowsLabel: document.getElementById("errorRowsLabel"),
-  chart: document.getElementById("errorsChart"),
-  body: document.getElementById("errorsBody"),
+const ERROR_ELEMENT_IDS = {
+  dbPath: "errorDbPath",
+  loadBtn: "loadErrorDbBtn",
+  granularityLabel: "errorGranularityLabel",
+  script: "errorScriptFilter",
+  code: "errorCodeFilter",
+  message: "errorMessageFilter",
+  start: "errorStartTime",
+  end: "errorEndTime",
+  applyBtn: "applyErrorFilterBtn",
+  resetBtn: "resetErrorFilterBtn",
+  info: "errorInfo",
+  rowsLabel: "errorRowsLabel",
+  chart: "errorsChart",
+  body: "errorsBody",
 };
 
+// Panel Errors dirender sebagai template halaman, jadi elemen-elemennya baru ada setelah halaman itu
+// dibuka. Karena itu setiap akses mencari elemennya saat itu juga, bukan sekali waktu modul dimuat --
+// kalau tidak, seluruh listener di bawah terpasang ke elemen yang sudah dibuang.
+const els = new Proxy({}, {
+  get: (_target, key) => (typeof key === "string" ? document.getElementById(ERROR_ELEMENT_IDS[key]) : undefined),
+});
+
+// Elemen yang listener-nya sudah terpasang. Template baru selalu menghasilkan node baru, jadi ini
+// cuma mencegah pengikatan ganda saat halaman yang sama dirender ulang tanpa ganti halaman.
+const wired = new WeakSet();
+function on(node, type, handler) {
+  if (!node || wired.has(node)) return;
+  wired.add(node);
+  node.addEventListener(type, handler);
+}
+
 function setInfo(text, isError = false) {
+  if (!els.info) return;
   els.info.textContent = text;
   els.info.classList.toggle("fail", isError);
 }
 
 export function resetErrorFilter() {
   state.errorFilter = { ...EMPTY_FILTER };
-  for (const input of [els.script, els.code, els.message, els.start, els.end]) input.value = "";
+  for (const input of [els.script, els.code, els.message, els.start, els.end]) if (input) input.value = "";
 }
 
 export async function refreshErrors(progressToken = "") {
@@ -162,6 +179,7 @@ function renderRows(rows) {
 }
 
 export function renderErrors() {
+  if (!els.body) return;
   const data = state.errors;
   if (!data) return;
   const filter = state.errorFilter;
@@ -264,35 +282,46 @@ try {
 } catch {
   state.errorDbPath = "";
 }
-els.dbPath.value = state.errorDbPath;
 
-// Baris tabel dirender ulang tiap filter berubah, jadi klik ditangkap di tbody, bukan per tombol.
-els.body.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-copy]");
-  if (!button) return;
-  const original = button.innerHTML;
-  try {
-    await navigator.clipboard.writeText(button.dataset.copy);
-    button.innerHTML = "&#10003;";
-  } catch {
-    button.innerHTML = "&#10007;";
-  }
-  button.classList.add("copied");
-  setTimeout(() => {
-    button.innerHTML = original;
-    button.classList.remove("copied");
-  }, 1200);
-});
+// Dipanggil tiap kali template halaman Errors terpasang: isi input dari state, lalu pasang listener
+// ke node yang baru dibuat template itu.
+export function initErrorPanel() {
+  if (!els.body) return;
+  if (els.dbPath) els.dbPath.value = state.errorDbPath;
+  if (els.script) els.script.value = state.errorFilter.scriptId;
+  if (els.code) els.code.value = state.errorFilter.code;
+  if (els.message) els.message.value = state.errorFilter.message;
+  if (els.start) els.start.value = state.errorFilter.start === null ? "" : formatHms(state.errorFilter.start);
+  if (els.end) els.end.value = state.errorFilter.end === null ? "" : formatHms(state.errorFilter.end);
 
-els.loadBtn.addEventListener("click", loadErrorDatabase);
-els.dbPath.addEventListener("keydown", (event) => { if (event.key === "Enter") loadErrorDatabase(); });
-els.applyBtn.addEventListener("click", applyErrorFilter);
-els.script.addEventListener("change", applyErrorFilter);
-els.code.addEventListener("change", applyErrorFilter);
-for (const input of [els.message, els.start, els.end]) {
-  input.addEventListener("keydown", (event) => { if (event.key === "Enter") applyErrorFilter(); });
+  // Baris tabel dirender ulang tiap filter berubah, jadi klik ditangkap di tbody, bukan per tombol.
+  on(els.body, "click", async (event) => {
+    const button = event.target.closest("[data-copy]");
+    if (!button) return;
+    const original = button.innerHTML;
+    try {
+      await navigator.clipboard.writeText(button.dataset.copy);
+      button.innerHTML = "&#10003;";
+    } catch {
+      button.innerHTML = "&#10007;";
+    }
+    button.classList.add("copied");
+    setTimeout(() => {
+      button.innerHTML = original;
+      button.classList.remove("copied");
+    }, 1200);
+  });
+
+  on(els.loadBtn, "click", loadErrorDatabase);
+  on(els.dbPath, "keydown", (event) => { if (event.key === "Enter") loadErrorDatabase(); });
+  on(els.applyBtn, "click", applyErrorFilter);
+  on(els.script, "change", applyErrorFilter);
+  on(els.code, "change", applyErrorFilter);
+  on(els.message, "keydown", (event) => { if (event.key === "Enter") applyErrorFilter(); });
+  on(els.start, "keydown", (event) => { if (event.key === "Enter") applyErrorFilter(); });
+  on(els.end, "keydown", (event) => { if (event.key === "Enter") applyErrorFilter(); });
+  on(els.resetBtn, "click", () => {
+    resetErrorFilter();
+    applyErrorFilter();
+  });
 }
-els.resetBtn.addEventListener("click", () => {
-  resetErrorFilter();
-  applyErrorFilter();
-});

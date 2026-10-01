@@ -43,17 +43,30 @@ export function siteScopeSeries(pattern, start, end, colors) {
   }));
 }
 
-export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey, showAllBtn, stateKey) {
+export function siteScopeHostRows(pattern, start, end) {
   const valuesByHost = new Map();
-
   for (const row of siteScopeRows(pattern, start, end)) {
     const host = hostFromSiteScopeName(measurementName(graphByType("SiteScope"), row));
     const current = valuesByHost.get(host) ?? [];
     current.push(row.value);
     valuesByHost.set(host, current);
   }
+  return [...valuesByHost.entries()].map(([host, values]) => ({ host, ...summarizeValues(values) }));
+}
 
-  const hostRows = [...valuesByHost.entries()].map(([host, values]) => ({ host, ...summarizeValues(values) }));
+export const CPU_PATTERN = /\/CPU\/utilization$/;
+export const MEMORY_PATTERN = /\/(UNIXRES|WINRES)\/Memory Used ?%$/i;
+
+// Baris host ini bukan hasil fetch, tapi turunan dari graph SiteScope -- jadi dihitung ulang setiap
+// kali data dashboard berubah, bukan hanya saat panelnya dirender. Yang lain, sheet XLSX untuk
+// SiteScope ikut kosong di halaman yang belum pernah dikunjungi.
+export function refreshSiteScopeRows(start, end) {
+  state.siteScopeCpuRows = siteScopeHostRows(CPU_PATTERN, start, end);
+  state.siteScopeMemoryRows = siteScopeHostRows(MEMORY_PATTERN, start, end);
+}
+
+export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey, showAllBtn, stateKey) {
+  const hostRows = siteScopeHostRows(pattern, start, end);
   // Disimpan supaya modal "Show All" memakai baris yang sama dengan tabel panel.
   if (stateKey) state[stateKey] = hostRows;
   const key = target.closest("[data-chart-selector]")?.dataset.chartSelector ?? "";
@@ -74,12 +87,10 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
     `).join("");
 }
 
-export function renderSiteScopeSection(els, start, end, applySelection) {
+// CPU dan Memory sudah dipisah jadi dua halaman, jadi metrik dirender satu per panggilan: elemen
+// halaman yang sedang aktif saja yang ada di DOM.
+export function renderSiteScopeMetric(selector, pattern, els, start, end, applySelection) {
   const colors = ["#00bf8f", "#2f7df6", "#ff416d", "#8b5cf6"];
-  const cpuSeries = siteScopeSeries(/\/CPU\/utilization$/, start, end, colors);
-  const memorySeries = siteScopeSeries(/\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, colors);
-  drawMultiLineChart(els.siteScopeCpuChart, applySelection("siteScopeCpu", cpuSeries), start, end);
-  drawMultiLineChart(els.siteScopeMemoryChart, applySelection("siteScopeMemory", memorySeries), start, end);
-  renderSiteScopeMetricTable(els.siteScopeCpuBody, /\/CPU\/utilization$/, start, end, "siteScopeCpu", els.showAllSiteScopeCpuBtn, "siteScopeCpuRows");
-  renderSiteScopeMetricTable(els.siteScopeMemoryBody, /\/(UNIXRES|WINRES)\/Memory Used ?%$/i, start, end, "siteScopeMemory", els.showAllSiteScopeMemoryBtn, "siteScopeMemoryRows");
+  drawMultiLineChart(els.chart, applySelection(selector, siteScopeSeries(pattern, start, end, colors)), start, end);
+  renderSiteScopeMetricTable(els.body, pattern, start, end, selector, els.showAllBtn, `${selector}Rows`);
 }

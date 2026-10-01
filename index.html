@@ -19,13 +19,23 @@
         <span class="flex items-center gap-1.5"><i class="nav-dot nav-dot-mixed"></i>Chart+Table</span>
       </div>
       <ul class="sidebar-nav flex-1 py-2.5 overflow-y-auto">
-        <li><a href="#/overview" data-page="overview" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Overview</a></li>
-        <li><a href="#/transactions" data-page="transactions" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary</a></li>
-        <li><a href="#/response-time" data-page="response-time" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time</a></li>
-        <li><a href="#/tps" data-page="tps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS</a></li>
+<li><a href="#/overview" data-page="overview" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Overview</a></li>
+        <li><a href="#/vusers" data-page="vusers" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">VUsers Overall</a></li>
+        <li><a href="#/transactions" data-page="transactions" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (BP)</a></li>
+        <li><a href="#/transactions-rps" data-page="transactions-rps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Transactions Summary (RPS_)</a></li>
+        <li><a href="#/response-time" data-page="response-time" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By Transaction</a></li>
+        <li><a href="#/response-time-api" data-page="response-time-api" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Response Time By API</a></li>
+<li><a href="#/tps" data-page="tps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS</a></li>
+        <li><a href="#/tps-detail" data-page="tps-detail" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Detail</a></li>
+        <li><a href="#/tps-overall" data-page="tps-overall" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">TPS Overall</a></li>
+<li><a href="#/rps" data-page="rps" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">RPS</a></li>
         <li><a href="#/rps-overall" data-page="rps-overall" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">RPS Overall</a></li>
-        <li><a href="#/infrastructure" data-page="infrastructure" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Infrastructure (SiteScope)</a></li>
-        <li><a href="#/lg-health" data-page="lg-health" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator Health</a></li>
+        <li><a href="#/infrastructure-cpu" data-page="infrastructure-cpu" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">SiteScope CPU</a></li>
+        <li><a href="#/infrastructure-memory" data-page="infrastructure-memory" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">SiteScope Memory</a></li>
+        <li><a href="#/lg-health" data-page="lg-health" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator Summary</a></li>
+        <li><a href="#/lg-cpu" data-page="lg-cpu" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator CPU</a></li>
+        <li><a href="#/lg-memory" data-page="lg-memory" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator Memory</a></li>
+        <li><a href="#/lg-disk" data-page="lg-disk" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Load Generator Disk</a></li>
         <li><a href="#/errors" data-page="errors" class="block px-5 py-1.75 border-l-2 border-transparent text-[12.5px] font-medium text-(--chart-text) hover:text-(--text)">Errors</a></li>
       </ul>
       <div class="px-5 py-4.5 border-t border-(--line)">
@@ -82,8 +92,10 @@
           </div>
           <button id="applyGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
           <button id="resetGroupFilterBtn" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
-          <div class="text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Gunakan % sebagai wildcard. Contoh: %mcm%</div>
+<div class="text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Gunakan % sebagai wildcard. Contoh: %mcm%</div>
         </div>
+
+        <div id="status" class="min-h-[18px] text-(--chart-text) text-[11px] mt-2.5" style="font-family: var(--font-mono);"></div>
       </header>
 
       <!-- ── Page Outlet ── -->

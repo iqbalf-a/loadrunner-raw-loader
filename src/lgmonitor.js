@@ -70,6 +70,33 @@ function percentCell(value, warn = false) {
   return `<td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap ${cls}">${text}</td>`;
 }
 
+// Tiap metrik punya halaman sendiri, jadi tabelnya cuma kolom metrik itu -- bukan susunan ulang tabel
+// ringkasan. Host yang tidak punya metrik ini (mis. load generator yang tidak melaporkan Disk)
+// dibuang supaya barisnya tidak setengah kosong.
+function lgMetricRows(metric, start, end) {
+  return hostSummaries(start, end)
+    .map((row) => ({ host: row.host, avg: row[`${metric}Avg`], max: row[`${metric}Max`] }))
+    .filter((row) => Number.isFinite(row.avg) || Number.isFinite(row.max));
+}
+
+function renderMetricTable(target, metric, rows, tableKey) {
+  if (!graphByType(LG_GRAPH_TYPE)) {
+    target.innerHTML = `<tr><td colspan="3" class="px-3.5 py-3 text-left muted">Result ini tidak punya data Load Generator monitoring (graph ${LG_GRAPH_TYPE}).</td></tr>`;
+    return;
+  }
+  if (!rows.length) {
+    target.innerHTML = `<tr><td colspan="3" class="px-3.5 py-3 text-left muted">Tidak ada data Load Generator di rentang waktu ini.</td></tr>`;
+    return;
+  }
+  target.innerHTML = sortRows(rows, state.sort[tableKey]).map((row) => `
+    <tr class="hover:bg-(--surface)">
+      <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${escapeHtml(row.host)}</td>
+      ${percentCell(row.avg)}
+      ${percentCell(row.max, true)}
+    </tr>
+  `).join("");
+}
+
 function renderHealthTable(target, rows) {
   if (!graphByType(LG_GRAPH_TYPE)) {
     target.innerHTML = `<tr><td colspan="8" class="px-3.5 py-3 text-left muted">Result ini tidak punya data Load Generator monitoring (graph ${LG_GRAPH_TYPE}).</td></tr>`;
@@ -93,11 +120,26 @@ function renderHealthTable(target, rows) {
   `).join("");
 }
 
-export function renderLgHealthSection(els, start, end, applySelection) {
-  drawMultiLineChart(els.lgCpuChart, applySelection("lgCpu", metricSeries("cpu", start, end)), start, end);
-  drawMultiLineChart(els.lgMemoryChart, applySelection("lgMemory", metricSeries("memory", start, end)), start, end);
-  drawMultiLineChart(els.lgDiskChart, applySelection("lgDisk", metricSeries("disk", start, end)), start, end);
-  // Disimpan supaya export XLSX memakai baris yang sama dengan tabel panel.
+// Disimpan supaya export XLSX memakai baris yang sama dengan tabel panel. Dipanggil dari refresh
+// data, bukan hanya dari render panel, supaya sheet-nya tidak kosong di halaman yang belum pernah
+// dikunjungi.
+export function refreshLgHealthRows(start, end) {
   state.lgHealthRows = hostSummaries(start, end);
-  renderHealthTable(els.lgHealthBody, state.lgHealthRows);
+  for (const metric of ["cpu", "memory", "disk"]) {
+    state.lgMetricRows[metric] = lgMetricRows(metric, start, end);
+  }
+  return state.lgHealthRows;
+}
+
+// Tabel ringkasan dan tiap grafik sudah dipisah jadi halaman sendiri, jadi elemen yang dirender
+// hanya milik halaman aktif -- fungsi lama yang mengasumsikan keempatnya ada sudah tidak berlaku.
+export function renderLgHealthTable(els, start, end) {
+  renderHealthTable(els.lgHealthBody, refreshLgHealthRows(start, end));
+}
+
+export function renderLgHealthChart(key, metric, els, start, end, applySelection) {
+  drawMultiLineChart(els.chart, applySelection(key, metricSeries(metric, start, end)), start, end);
+  // refreshLgHealthRows() sudah mengisi state.lgMetricRows untuk semua metrik, jadi tabel panel ini
+  // tidak perlu menghitung ulang.
+  if (els.table) renderMetricTable(els.table, metric, state.lgMetricRows[metric] ?? [], key);
 }

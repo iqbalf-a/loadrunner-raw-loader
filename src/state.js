@@ -80,6 +80,9 @@ export const state = {
     lgDisk: null,
   },
   seriesCountByType: {},
+  // Total kandidat seri per panel, dibaca dari respons server. Disimpan di state, bukan ditulis
+  // langsung ke DOM, karena halaman yang bisa menampilkannya berubah-ubah sesuai rute aktif.
+  seriesTotals: { responseTime: 0, responseTimeApi: 0, tpsTransaction: 0, tpsApi: 0, tpsDetail: 0 },
   appliedStart: 0,
   appliedEnd: 0,
   appliedTpsGranularity: DEFAULT_GRAPH_GRANULARITY_SECONDS,
@@ -87,6 +90,7 @@ export const state = {
   siteScopeCpuRows: [],
   siteScopeMemoryRows: [],
   lgHealthRows: [],
+  lgMetricRows: { cpu: [], memory: [], disk: [] },
   errors: null,
   errorDbPath: "",
   errorFilter: { scriptId: "", code: "", message: "", start: null, end: null },
@@ -103,6 +107,10 @@ export const state = {
     siteScopeCpu: { key: "host", dir: "asc" },
     siteScopeMemory: { key: "host", dir: "asc" },
     lgHealth: { key: "host", dir: "asc" },
+    // Tabel per metrik LG: default terbesar dulu, jadi host yang jadi bottleneck langsung kelihatan.
+    lgCpu: { key: "max", dir: "desc" },
+    lgMemory: { key: "max", dir: "desc" },
+    lgDisk: { key: "max", dir: "desc" },
   },
 };
 

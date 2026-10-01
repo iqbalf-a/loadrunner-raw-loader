@@ -52,6 +52,11 @@ const LG_COLUMNS = [
   col("Disk Avg (%)", "diskAvg", "dec2"), col("Disk Max (%)", "diskMax", "dec2"),
 ];
 
+// Tabel per metrik LG (halaman CPU/Memory/Disk) cuma punya Avg dan Max metrik itu.
+const LG_METRIC_COLUMNS = (metric) => [
+  col("Load Generator", "host"), col(`${metric} Avg (%)`, "avg", "dec2"), col(`${metric} Max (%)`, "max", "dec2"),
+];
+
 // Di tabel, Iteration dan Time cuma menampilkan kemunculan pertama dan sisanya di tooltip. Di
 // Excel tidak ada tooltip, jadi rentangnya dijadikan kolom sendiri.
 const ERROR_COLUMNS = [
@@ -155,6 +160,9 @@ export function collectTableSheets() {
       tableSheet("SiteScope CPU Overall", SITESCOPE_COLUMNS, state.siteScopeCpuRows, "siteScopeCpu", "sitescope"),
       tableSheet("SiteScope Memory Overall", SITESCOPE_COLUMNS, state.siteScopeMemoryRows, "siteScopeMemory", "sitescope"),
       sheet("Load Generator Summary", LG_COLUMNS, sortRows(state.lgHealthRows ?? [], state.sort.lgHealth)),
+      sheet("LG CPU", LG_METRIC_COLUMNS("CPU"), sortRows(state.lgMetricRows?.cpu ?? [], state.sort.lgCpu)),
+      sheet("LG Memory", LG_METRIC_COLUMNS("Memory"), sortRows(state.lgMetricRows?.memory ?? [], state.sort.lgMemory)),
+      sheet("LG Disk", LG_METRIC_COLUMNS("Disk"), sortRows(state.lgMetricRows?.disk ?? [], state.sort.lgDisk)),
     );
   }
   // Errors bisa dimuat dari SqliteDb.db tanpa result, jadi sheet-nya berdiri sendiri.
@@ -176,9 +184,9 @@ const CHART_TABLES = {
   rpsOverall: () => ({ columns: rpsOverallColumns(), rows: [state.rpsOverall] }),
   siteScopeCpu: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeCpuRows, nameKey: "host", sortKey: "siteScopeCpu" }),
   siteScopeMemory: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeMemoryRows, nameKey: "host", sortKey: "siteScopeMemory" }),
-  lgCpu: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
-  lgMemory: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
-  lgDisk: () => ({ columns: LG_COLUMNS, rows: state.lgHealthRows, nameKey: "host", sortKey: "lgHealth" }),
+  lgCpu: () => ({ columns: LG_METRIC_COLUMNS("CPU"), rows: state.lgMetricRows?.cpu, nameKey: "host", sortKey: "lgCpu" }),
+  lgMemory: () => ({ columns: LG_METRIC_COLUMNS("Memory"), rows: state.lgMetricRows?.memory, nameKey: "host", sortKey: "lgMemory" }),
+  lgDisk: () => ({ columns: LG_METRIC_COLUMNS("Disk"), rows: state.lgMetricRows?.disk, nameKey: "host", sortKey: "lgDisk" }),
 };
 
 export function chartPanelTable(key) {

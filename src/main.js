@@ -1,25 +1,47 @@
-import { formatHms, formatClockAt, parseHms, parsePositiveSeconds, escapeHtml } from "./format.js";
+import { formatHms, parseHms, parsePositiveSeconds } from "./format.js";
 import {
   state,
   autoGranularitySeconds,
   resolveGroup,
   resolveSelection,
-  sortRows,
   buildTransactions,
-  DEFAULT_TPS_FILTERS,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, refreshSeriesToolbars, onSeriesSearchChange, seriesSearchQuery, SEARCH_ROWS_LIMIT, chartSelectors } from "./charts.js";
-import { renderMetrics, renderTable, renderTransactionRows, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent, filterByGroup } from "./tables.js";
-import { renderSiteScopeSection } from "./sitescope.js";
-import { renderLgHealthSection } from "./lgmonitor.js";
-import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
+import {
+  setupChartPanelActions,
+  downloadChartPng,
+  copyChartImage,
+  toggleExpandPanel,
+  closeExpandedPanel,
+  configureChartSelector,
+  onSeriesSearchChange,
+  chartSelectors,
+} from "./charts.js";
+import {
+  renderTransactionModalContent,
+  renderTpsModalContent,
+  closeTransactionModal,
+  closeTpsModal,
+} from "./tables.js";
+import { refreshSiteScopeRows } from "./sitescope.js";
+import { refreshLgHealthRows } from "./lgmonitor.js";
+import { refreshErrors, resetErrorFilter } from "./errors.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
 import { exportTablesToXlsx } from "./export.js";
+import {
+  PAGES,
+  DEFAULT_PAGE,
+  SERIES_MAX,
+  updateSortIndicators,
+  rtRankNames,
+} from "./pages.js";
 
-const SERIES_MAX = 50;
-
+// Seri yang sudah difetch untuk tiap panel grafik. Key-nya sama dengan data-chart-selector di
+// template halaman, jadi halaman bisa dibangun ulang dari state tanpa query baru.
 const chartAllSeries = {};
 
+// Elemen shell: sidebar, toolbar, modal, loading overlay. Semuanya ada di index.html dari awal,
+// jadi aman diambil sekali waktu modul dimuat. Id lain milik halaman tertentu dan baru dicari
+// setelah template halaman terpasang.
 const els = {
   resultPath: document.getElementById("resultPath"),
   startTime: document.getElementById("startTime"),
@@ -33,230 +55,87 @@ const els = {
   applyTimeBtn: document.getElementById("applyTimeBtn"),
   resetTimeBtn: document.getElementById("resetTimeBtn"),
   status: document.getElementById("status"),
-  scenarioInfo: document.getElementById("scenarioInfo"),
-  rangeInfo: document.getElementById("rangeInfo"),
-  metrics: document.getElementById("metrics"),
-  txBody: document.getElementById("txBody"),
-  txRpsBody: document.getElementById("txRpsBody"),
-  showAllRpsTransactionsBtn: document.getElementById("showAllRpsTransactionsBtn"),
-  tpsBody: document.getElementById("tpsBody"),
-  showAllTpsTransactionsBtn: document.getElementById("showAllTpsTransactionsBtn"),
-  tpsApiBody: document.getElementById("tpsApiBody"),
-  showAllTpsApiBtn: document.getElementById("showAllTpsApiBtn"),
-  tpsDetailBody: document.getElementById("tpsDetailBody"),
-  showAllTpsDetailBtn: document.getElementById("showAllTpsDetailBtn"),
-  tpsOverallBody: document.getElementById("tpsOverallBody"),
-  rpsOverallChart: document.getElementById("rpsOverallChart"),
-  rpsOverallBody: document.getElementById("rpsOverallBody"),
-  tpsModal: document.getElementById("tpsModal"),
-  tpsModalTitle: document.getElementById("tpsModalTitle"),
-  tpsModalHead: document.getElementById("tpsModalHead"),
-  tpsModalBody: document.getElementById("tpsModalBody"),
-  closeTpsModalBtn: document.getElementById("closeTpsModalBtn"),
-  rangeLabel: document.getElementById("rangeLabel"),
-  tpsGranularityLabel: document.getElementById("tpsGranularityLabel"),
-  seriesCountRt: document.getElementById("seriesCountRt"),
-  seriesCountRtApi: document.getElementById("seriesCountRtApi"),
-  seriesCountTps: document.getElementById("seriesCountTps"),
-  seriesCountTpsApi: document.getElementById("seriesCountTpsApi"),
-  seriesCountTpsDetail: document.getElementById("seriesCountTpsDetail"),
-  transactionRtChart: document.getElementById("transactionRtChart"),
-  transactionRtApiChart: document.getElementById("transactionRtApiChart"),
-  vusersChart: document.getElementById("vusersChart"),
-  tpsChart: document.getElementById("tpsChart"),
-  tpsApiChart: document.getElementById("tpsApiChart"),
-  tpsDetailChart: document.getElementById("tpsDetailChart"),
-  tpsOverallChart: document.getElementById("tpsOverallChart"),
-  siteScopeCpuChart: document.getElementById("siteScopeCpuChart"),
-  siteScopeMemoryChart: document.getElementById("siteScopeMemoryChart"),
-  siteScopeCpuBody: document.getElementById("siteScopeCpuBody"),
-  siteScopeMemoryBody: document.getElementById("siteScopeMemoryBody"),
-  showAllSiteScopeCpuBtn: document.getElementById("showAllSiteScopeCpuBtn"),
-  showAllSiteScopeMemoryBtn: document.getElementById("showAllSiteScopeMemoryBtn"),
-  lgCpuChart: document.getElementById("lgCpuChart"),
-  lgMemoryChart: document.getElementById("lgMemoryChart"),
-  lgDiskChart: document.getElementById("lgDiskChart"),
-  lgHealthBody: document.getElementById("lgHealthBody"),
   groupFilter: document.getElementById("groupFilter"),
   applyGroupFilterBtn: document.getElementById("applyGroupFilterBtn"),
   resetGroupFilterBtn: document.getElementById("resetGroupFilterBtn"),
-  showAllTransactionsBtn: document.getElementById("showAllTransactionsBtn"),
-  showAllRtBtn: document.getElementById("showAllRtBtn"),
-  showAllRtApiBtn: document.getElementById("showAllRtApiBtn"),
   transactionModal: document.getElementById("transactionModal"),
   transactionModalTitle: document.getElementById("transactionModalTitle"),
   transactionModalTable: document.getElementById("transactionModalTable"),
   transactionModalBody: document.getElementById("transactionModalBody"),
   closeTransactionModalBtn: document.getElementById("closeTransactionModalBtn"),
   copyTransactionModalBtn: document.getElementById("copyTransactionModalBtn"),
+  tpsModal: document.getElementById("tpsModal"),
+  tpsModalTitle: document.getElementById("tpsModalTitle"),
+  tpsModalHead: document.getElementById("tpsModalHead"),
   tpsModalTable: document.getElementById("tpsModalTable"),
+  tpsModalBody: document.getElementById("tpsModalBody"),
+  closeTpsModalBtn: document.getElementById("closeTpsModalBtn"),
   copyTpsModalBtn: document.getElementById("copyTpsModalBtn"),
 };
 
-function tableToTsv(table) {
-  const headerCells = [...table.querySelectorAll("thead th")].map((th) => {
-    const clone = th.cloneNode(true);
-    clone.querySelector(".sort-indicator")?.remove();
-    return clone.textContent.trim();
+const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mt-2.5";
+const STATUS_ERR = "min-h-[18px] text-(--danger) text-[11px] mt-2.5 font-medium";
+
+function setStatus(text, isError = false) {
+  els.status.className = isError ? STATUS_ERR : STATUS_BASE;
+  els.status.textContent = text;
+}
+
+// ── Router ───────────────────────────────────────────────────────────────────────────────────────
+// Outlet hanya pernah memuat satu halaman. Halaman yang lain dibangun ulang dari state saat dibuka,
+// tanpa query baru: semua datanya sudah ada di state sejak Load/Apply terakhir.
+
+let currentPage = DEFAULT_PAGE;
+
+function pageKeyFromHash() {
+  const key = location.hash.replace(/^#\/?/, "");
+  return PAGES[key] ? key : DEFAULT_PAGE;
+}
+
+// Dipanggil saat hash berubah: pasang template baru ke outlet, lalu render isinya.
+function navigate() {
+  const previousPage = currentPage;
+  currentPage = pageKeyFromHash();
+  const page = PAGES[currentPage];
+  // Panel yang di-expand dicocokkan lewat kelas di seluruh dokumen, jadi harus ditutup sebelum
+  // markup lamanya dibuang -- kalau tidak, body tetap terkunci mode expanded tanpa panel-nya.
+  closeExpandedPanel();
+  document.getElementById("page-outlet").innerHTML = page.template();
+  document.querySelectorAll(".sidebar-nav a").forEach((link) => {
+    link.classList.toggle("active", link.dataset.page === currentPage);
   });
-  const bodyRows = [...table.querySelectorAll("tbody tr")].map((tr) =>
-    [...tr.querySelectorAll("td")].map((td) => td.textContent.trim()).join("\t"));
-  return [headerCells.join("\t"), ...bodyRows].join("\n");
+  syncToolbarHeight();
+  if (previousPage !== currentPage) window.scrollTo({ top: 0 });
+  renderActivePage();
 }
 
-async function copyTableRows(table, button) {
-  const text = tableToTsv(table);
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
-  }
-  const original = button.textContent;
-  button.textContent = "Copied!";
-  button.disabled = true;
-  setTimeout(() => {
-    button.textContent = original;
-    button.disabled = false;
-  }, 1200);
+// Isi halaman aktif saja yang digambar ulang. Dipakai setiap kali data atau filter berubah;
+// template tidak disentuh, jadi listener yang sudah terpasang tidak perlu diletakkan lagi.
+function renderActivePage() {
+  const result = PAGES[currentPage].init(pageContext());
+  // Halaman response time melakukan query sendiri, jadi init-nya async. Kesalahannya harus
+  //reported di bar status, bukan jadi promise yang tak tertangani.
+  if (result?.catch) result.catch((error) => setStatus(error.message, true));
+  if (!state.data) return;
+  setStatus(`SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`);
 }
 
-function applyTheme(theme) {
-  document.body.dataset.theme = theme;
-  els.themeToggle.textContent = theme === "dark" ? "Light" : "Dark";
-  localStorage.setItem("loadrunnerTheme", theme);
-  if (state.data) renderAll();
-  else renderErrors();
+function pageContext() {
+  return {
+    els,
+    outlet: document.getElementById("page-outlet"),
+    range: () => ({
+      start: state.appliedStart,
+      end: state.appliedEnd || state.data?.result?.scenario?.durationSeconds || 0,
+    }),
+    applySelection,
+    seriesFromFlatRows,
+    applyTpsFilter,
+    setStatus,
+  };
 }
 
-function toggleTheme() {
-  applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
-}
-
-function renderTpsCharts(start, end) {
-  els.tpsGranularityLabel.textContent = `${state.appliedTpsGranularity}s bucket`;
-  drawMultiLineChart(els.tpsChart, applySelection("tpsTransaction", seriesFromFlatRows(state.tpsSeriesRows ?? [])), start, end);
-  drawMultiLineChart(els.tpsApiChart, applySelection("tpsApi", seriesFromFlatRows(state.tpsApiSeriesRows ?? [])), start, end);
-  drawMultiLineChart(els.tpsDetailChart, applySelection("tpsDetail", seriesFromFlatRows(state.tpsDetailSeriesRows ?? [])), start, end);
-  drawMultiLineChart(els.tpsOverallChart, [{
-    name: "Overall TPS",
-    color: "#00bf8f",
-    points: (state.tpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
-  }], start, end);
-  drawRpsOverallChart(start, end);
-}
-
-function drawRpsOverallChart(start, end) {
-  drawMultiLineChart(els.rpsOverallChart, [{
-    name: "Overall RPS",
-    color: "#2f7df6",
-    points: (state.rpsOverallSeriesRows ?? []).map((row) => ({ x: row.elapsedSeconds, y: row.value })),
-  }], start, end);
-}
-
-function renderRpsOverallPanel() {
-  renderTpsOverall(els.rpsOverallBody, state.rpsOverall);
-}
-
-function applyRpsOverallPayload(payload) {
-  state.rpsOverall = payload;
-  state.rpsOverallSeriesRows = payload.series;
-}
-
-// Query string filter Include/Exclude sebuah panel (lihat DEFAULT_TPS_FILTERS untuk daftarnya).
-function nameFilterParams(key) {
-  const filter = state.tpsFilters[key];
-  return `&include=${encodeURIComponent(filter.include)}&exclude=${encodeURIComponent(filter.exclude)}`;
-}
-
-// Jumlah transaksi yang lolos filter tiap panel, ditampilkan di bar filter-nya.
-const TPS_FILTER_COUNTS = {
-  rt: () => state.responseTimeNames.length,
-  rtApi: () => state.responseTimeApiNames.length,
-  tx: () => state.transactions.length,
-  txRps: () => state.rpsTransactions.length,
-  // TPS Detail satu baris per group, jadi yang dihitung transaksi anggota group-nya.
-  tpsDetail: () => state.tpsDetailTransactions ?? 0,
-  tps: () => state.tpsSummary.length,
-  rps: () => state.tpsSummaryApi.length,
-  tpsOverall: () => state.tpsOverall.transactions ?? 0,
-  rpsOverall: () => state.rpsOverall.transactions ?? 0,
-};
-
-const FILTER_INPUT_CLASS = "w-full h-7.5 px-2.25 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[13px]";
-const FILTER_LABEL_CLASS = "block text-[10px] text-(--chart-text) mb-0.75 font-medium tracking-[0.08em] uppercase";
-
-// Bar filter disisipkan di bawah judul setiap panel bertanda data-tps-filter, supaya markup-nya
-// tidak diulang di setiap panel di index.html.
-function mountTpsFilterBars() {
-  document.querySelectorAll("[data-tps-filter]").forEach((panel) => {
-    const key = panel.dataset.tpsFilter;
-    const bar = document.createElement("div");
-    bar.className = "tps-filter-bar flex flex-wrap items-end gap-2.5 px-4 py-2.5 border-b border-(--line)";
-    bar.innerHTML = `
-      <div class="min-w-55">
-        <label class="${FILTER_LABEL_CLASS}" style="font-family: var(--font-mono);">Include</label>
-        <input data-filter-field="include" type="text" spellcheck="false" class="${FILTER_INPUT_CLASS}" style="font-family: var(--font-mono);">
-      </div>
-      <div class="flex-1 min-w-65">
-        <label class="${FILTER_LABEL_CLASS}" style="font-family: var(--font-mono);">Exclude</label>
-        <input data-filter-field="exclude" type="text" spellcheck="false" class="${FILTER_INPUT_CLASS}" style="font-family: var(--font-mono);">
-      </div>
-      <button data-filter-action="apply" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--signal) rounded-[3px] bg-(--signal) text-[#1c1200] font-[inherit] text-[12px] font-bold cursor-pointer">Apply</button>
-      <button data-filter-action="reset" type="button" class="h-7.5 min-w-20.5 px-3 border border-(--line) rounded-[3px] bg-(--surface-raised) text-(--text) font-[inherit] text-[12px] font-medium cursor-pointer">Reset</button>
-      <span data-filter-count class="h-7.5 leading-7.5 text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);"></span>
-      <div class="basis-full text-[11px] text-(--chart-text)" style="font-family: var(--font-mono);">Beberapa pola dipisah koma. % = wildcard, tanpa % = awalan, _ dibaca apa adanya. Ikut kalau cocok salah satu Include dan tidak cocok satu pun Exclude.</div>
-    `;
-    panel.querySelector(".panel-title").after(bar);
-    const input = (field) => bar.querySelector(`[data-filter-field="${field}"]`);
-    const apply = () => applyTpsFilter(key, { include: input("include").value.trim(), exclude: input("exclude").value.trim() });
-    bar.querySelector('[data-filter-action="apply"]').addEventListener("click", apply);
-    bar.querySelector('[data-filter-action="reset"]').addEventListener("click", () => applyTpsFilter(key, { ...DEFAULT_TPS_FILTERS[key] }));
-    bar.querySelectorAll("input").forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); }));
-  });
-  syncTpsFilterBars();
-}
-
-function syncTpsFilterBars() {
-  document.querySelectorAll("[data-tps-filter]").forEach((panel) => {
-    const key = panel.dataset.tpsFilter;
-    const filter = state.tpsFilters[key];
-    panel.querySelector('[data-filter-field="include"]').value = filter.include;
-    panel.querySelector('[data-filter-field="exclude"]').value = filter.exclude;
-    panel.querySelector("[data-filter-count]").textContent = state.data ? `${TPS_FILTER_COUNTS[key]()} transaksi cocok` : "";
-  });
-}
-
-// Filter ini mengubah query summary, series, dan overall sekaligus, jadi dashboard di-refresh
-// penuh seperti Apply filter waktu.
-async function applyTpsFilter(key, filter) {
-  state.tpsFilters[key] = filter;
-  if (!state.data) {
-    syncTpsFilterBars();
-    return;
-  }
-  await withLoadTimer("Applying transaction filter", async (onQueryProgress) => {
-    await refreshDashboardData(onQueryProgress);
-    renderAll();
-    els.status.textContent = `Filter ${key} applied: include "${filter.include || "(semua)"}", exclude "${filter.exclude || "(tidak ada)"}"`;
-  });
-}
-
-function renderTpsSummaryPanels() {
-  updateTpsGranularityHeaders();
-  renderTpsSummaryTable(state.tpsSummary, els.tpsBody, els.showAllTpsTransactionsBtn, "tpsSummary", "transaction");
-  renderTpsSummaryTable(state.tpsSummaryApi, els.tpsApiBody, els.showAllTpsApiBtn, "tpsSummaryApi", "api");
-  renderTpsSummaryTable(state.tpsDetail, els.tpsDetailBody, els.showAllTpsDetailBtn, "tpsDetail", "detail");
-  renderTpsOverall(els.tpsOverallBody, state.tpsOverall);
-  renderRpsOverallPanel();
-  syncTpsFilterBars();
-}
+// ── Seri & seleksi grafik ─────────────────────────────────────────────────────────────────────────
 
 function applySelection(key, allSeries) {
   // Merge newly fetched series into chartAllSeries (preserve existing ones)
@@ -266,8 +145,7 @@ function applySelection(key, allSeries) {
   chartAllSeries[key] = [...existingMap.values()];
 
   const names = chartAllSeries[key].map((s) => s.name);
-  const config = chartSelectors.get(key);
-  const maxSeries = config?.maxSeries ?? 10;
+  const maxSeries = chartSelectors.get(key)?.maxSeries ?? 10;
   const selected = new Set(resolveSelection(key, names, maxSeries));
   return chartAllSeries[key].filter((s) => selected.has(s.name));
 }
@@ -287,303 +165,123 @@ function seriesFromFlatRows(rows) {
   }));
 }
 
-// Tabel di bawah grafik response time: daftar kandidat seri panel itu, satu baris per transaksi,
-// dengan centang di kolom הראשונה yang menentukan seri mana yang digambar. Kandidatnya SELURUH nama
-// yang lolos filter panel, bukan cuma top-N yang sudah digambar, supaya transaksi seperti BP195 yang
+// filterKey: panel yang memakai filter Include/Exclude (lihat DEFAULT_TPS_FILTERS); kosong berarti
+// pakai namePrefix.
+async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingNames, filterKey = "") {
+  if (!state.data) return;
+  const { session, result } = state.data;
+  const duration = result.scenario.durationSeconds || 0;
+  const params = new URLSearchParams({
+    session,
+    start: String(state.appliedStart),
+    end: String(state.appliedEnd || duration),
+    granularity: String(state.appliedTpsGranularity),
+    maxSeries: String(SERIES_MAX),
+    extraNames: JSON.stringify([...(state.chartSelections[key] ?? []), ...missingNames]),
+  });
 
-// total response time-nya kecil tetap bisa difilter group dan dicentang. Grafik tetap hanya
-// menggambar MAX_SELECTED_SERIES seri, jadi tabel boleh lebih panjang dari grafik.
-const RT_TABLES = [
-  { key: "responseTime", tableKey: "rtTable", body: "rtBody", names: () => state.responseTimeNames },
-  { key: "responseTimeApi", tableKey: "rtApiTable", body: "rtApiBody", names: () => state.responseTimeApiNames },
+  const response = await fetch(`${endpoint}?${params}${filterKey ? nameFilterParams(filterKey) : ""}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Series query failed");
+  state[rowsField] = payload.rows;
+
+  // Merge newly fetched series into chartAllSeries so Top buttons and re-renders have the data
+  const newSeries = seriesFromFlatRows(payload.rows);
+  const existing = chartAllSeries[key] ?? [];
+  const existingMap = new Map(existing.map((s) => [s.name, s]));
+  for (const s of newSeries) existingMap.set(s.name, s);
+  chartAllSeries[key] = [...existingMap.values()];
+}
+
+// Konfigurasi pemilih seri Depends hanya pada key panel, jadi dipasang sekali waktu modul dimuat
+// -- bukan tiap kali halaman dirender.
+const CHART_SELECTOR_KEYS = [
+  "responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail",
+  "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk",
 ];
-const rtTableRequests = new Map();
-// Peringkat total response time per panel, diisi dari respons server di updateRtTables.
-const rtVolumeRank = { responseTime: new Map(), responseTimeApi: new Map() };
+// Panel CPU/Memory/Disk tidak dibatasi supaya semua host bisa ditampilkan.
+const UNLIMITED_PANELS = new Set(["siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"]);
 
-function renderRtTable({ key, tableKey, body }) {
-  // Urutan baris = peringkat total response time terbesar dulu, bukan urutan centang. Peringkat
-  // ini ikut dari server, karena tabel sekarang memuat semua kandidat seri panel -- bukan cuma
-  // top-N yang sudah digambar -- jadi `chartAllSeries` tidak bisa lagi jadi acuan urutan.
-  const rank = rtVolumeRank[key];
-  const order = new Map([...rank.keys()].map((name, index) => [name, index]));
-  const allRows = filterByGroup(state.rtTableRows[key], "transaction")
-    .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
-  const query = seriesSearchQuery(key);
-  // Default: tampilkan semua baris. Kalau ada query search: tampilkan semua yang cocok.
-  const limit = allRows.length;
-  const displayRows = allRows;
-  const tbody = document.getElementById(body);
-  tbody.innerHTML = displayRows.length
-    ? renderTransactionRows(sortRows(displayRows, state.sort[tableKey]), tbody)
-    : `<tr><td colspan="13" class="px-3.5 py-3 text-left muted">${query ? `Tidak ada transaksi yang cocok dengan "${query}".` : "Belum ada data response time di rentang ini."}</td></tr>`;
+CHART_SELECTOR_KEYS.forEach((key) => {
+  const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
+  const selected = () => state.chartSelections[key] ?? [];
+  // Pilih seri baru hanya perlu menggambar ulang halaman yang sedang terbuka; template halaman lain
+  // belum ada, jadi tidak ada yang perlu ikut berubah.
+  const setSelected = (names) => { state.chartSelections[key] = names; renderActivePage(); };
+  const maxSeries = UNLIMITED_PANELS.has(key) ? Infinity : SERIES_MAX;
 
-  // Show All button untuk tabel ini (mirip TPS table).
-  const showAllBtn = key === "responseTime" ? els.showAllRtBtn : els.showAllRtApiBtn;
-  if (showAllBtn) {
-    showAllBtn.hidden = allRows.length === 0;
-    showAllBtn.textContent = `Show All (${allRows.length})`;
+  // rankNames: urutan kandidat untuk tombol Top 10/30/50, memakai metrik utama panel itu sendiri
+  // (avg response time, avg TPS, avg %) -- bukan urutan volume dari server.
+  const rankBy = (rows, metric, nameOf = (r) => r.name) => (names) => {
+    const byName = new Map(rows.map((row) => [nameOf(row), row[metric] ?? 0]));
+    return [...names].sort((a, b) => (byName.get(b) ?? 0) - (byName.get(a) ?? 0));
+  };
+
+  const register = (allNames, ensureLoaded, rankNames) => configureChartSelector(
+    key, allNames, loadedNames, selected, setSelected, ensureLoaded, maxSeries, rankNames,
+  );
+
+  if (key === "responseTime") {
+    register(
+      () => state.responseTimeNames,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing, "rt"),
+      rtRankNames("responseTime"),
+    );
+  } else if (key === "responseTimeApi") {
+    register(
+      () => state.responseTimeApiNames,
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing, "rtApi"),
+      rtRankNames("responseTimeApi"),
+    );
+  } else if (key === "tpsTransaction") {
+    register(
+      () => state.tpsSummary.map((t) => t.name),
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing, "tps"),
+      rankBy(state.tpsSummary, "avgTps"),
+    );
+  } else if (key === "tpsApi") {
+    register(
+      () => state.tpsSummaryApi.map((t) => t.name),
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing, "rps"),
+      rankBy(state.tpsSummaryApi, "avgTps"),
+    );
+  } else if (key === "tpsDetail") {
+    register(
+      () => state.tpsDetail.map((t) => t.name),
+      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing, "tpsDetail"),
+      rankBy(state.tpsDetail, "avgTps"),
+    );
+  } else if (key === "siteScopeCpu" || key === "siteScopeMemory") {
+    // Baris host diturunkan dari graph, jadi kandidat panel ini sama dengan yang sudah digambar.
+    const rows = key === "siteScopeCpu" ? state.siteScopeCpuRows : state.siteScopeMemoryRows;
+    register(loadedNames, null, rankBy(rows, "avg", (r) => r.host));
+  } else {
+    const metric = key === "lgCpu" ? "cpuAvg" : key === "lgMemory" ? "memoryAvg" : "diskAvg";
+    register(loadedNames, null, rankBy(state.lgHealthRows, metric, (r) => r.host));
   }
+});
+
+// ── Query & filter ────────────────────────────────────────────────────────────────────────────────
+
+// Query string filter Include/Exclude sebuah panel (lihat DEFAULT_TPS_FILTERS untuk daftarnya).
+function nameFilterParams(key) {
+  const filter = state.tpsFilters[key];
+  return `&include=${encodeURIComponent(filter.include)}&exclude=${encodeURIComponent(filter.exclude)}`;
 }
 
-// Nama yang dikirim ke server: seluruh kandidat panel, dipersempit oleh kotak search kalau ada
-// isian. Tanpa isian search, daftar ini bisa ratusan nama -- ini yang membuat BP195 masuk
-// ke state.rtTableRows dan akhirnya cocok dengan filter group name.
-function rtRowNames(table) {
-  const query = seriesSearchQuery(table.key);
-  if (!query) return table.names();
-  const needle = query.toLowerCase();
-  return table.names()
-    .filter((name) => name.toLowerCase().includes(needle))
-    .slice(0, SEARCH_ROWS_LIMIT);
-}
-
-// Statistik diambil dari server hanya kalau daftar nama kandidat atau rentang waktunya berubah;
-// render ulang biasa (resize, ganti tema, sort) cukup memakai baris yang sudah ada.
-// Gunakan POST + body JSON (include/exclude) agar tidak kelewat batas URL seperti GET ?names=...
-// RT_TABLES keys ("responseTime", "responseTimeApi") != DEFAULT_TPS_FILTERS keys ("rt", "rtApi").
-const FILTER_KEY_MAP = { responseTime: "rt", responseTimeApi: "rtApi" };
-async function updateRtTables() {
-  if (!state.data) return;
-  const duration = state.data.result.scenario.durationSeconds || 0;
-  await Promise.all(RT_TABLES.map(async (table) => {
-    const filterKey = FILTER_KEY_MAP[table.key];
-      const filter = state.tpsFilters[filterKey];
-    const body = {
-      session: state.data.session,
-      start: state.appliedStart,
-      end: state.appliedEnd || duration,
-      offset: 0,
-      limit: 0,
-      order: "volume",
-      namePrefix: "",
-      nameFilter: filter ? { include: filter.include, exclude: filter.exclude } : null,
-    };
-    const requestKey = JSON.stringify(body);
-    if (rtTableRequests.get(table.key) === requestKey) {
-      renderRtTable(table);
-      return;
-    }
-    rtTableRequests.set(table.key, requestKey);
-    try {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Response time table query failed");
-      // Respons yang datang terlambat untuk pilihan lama dibuang.
-      if (rtTableRequests.get(table.key) !== requestKey) return;
-      rtVolumeRank[table.key] = new Map(payload.rows.map((tx, index) => [tx.name, index]));
-      state.rtTableRows[table.key] = payload.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
-    } catch (error) {
-      rtTableRequests.delete(table.key);
-      rtVolumeRank[table.key] = new Map();
-      state.rtTableRows[table.key] = [];
-      els.status.textContent = error.message;
-    }
-    renderRtTable(table);
-  }));
-}
-
-async function renderCharts(transactions, start, end) {
-  drawMultiLineChart(
-    els.transactionRtChart,
-    applySelection("responseTime", seriesFromFlatRows(state.responseTimeRows ?? [])),
-    start,
-    end,
-  );
-  drawMultiLineChart(
-    els.transactionRtApiChart,
-    applySelection("responseTimeApi", seriesFromFlatRows(state.responseTimeApiRows ?? [])),
-    start,
-    end,
-  );
-  drawMultiLineChart(
-    els.vusersChart,
-    transactionSeries("es_tr_runtime_vusers", start, end, (rows) => rows.map((row) => ({ x: row.elapsedSeconds, y: row.value }))),
-    start,
-    end,
-  );
-  renderTpsCharts(start, end);
-  renderSiteScopeSection(els, start, end, applySelection);
-  renderLgHealthSection(els, start, end, applySelection);
-  ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach(refreshExpandedChartSelector);
-  refreshSeriesToolbars();
-  await updateRtTables();
-}
-
-const STATUS_BASE = "min-h-[18px] text-(--chart-text) text-[11px] mb-3.5";
-const STATUS_ERR  = "min-h-[18px] text-(--danger) text-[11px] mb-3.5 font-medium";
-
-function renderAll() {
-  if (!state.data) return;
-  const duration = state.data.result.scenario.durationSeconds || 0;
-  const start = state.appliedStart;
-  const end = state.appliedEnd || duration;
-
-  els.status.className = STATUS_BASE;
-  const isAllRange = start === 0 && Math.round(end) === Math.round(duration);
-  els.rangeLabel.textContent = `Filtered: ${formatHms(start)} - ${formatHms(end)}`;
-  const { companyName, sessionName, runDate } = state.data.result.scenario;
-  els.scenarioInfo.innerHTML = `
-    <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
-      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Project</div>
-      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${escapeHtml(companyName || "-")}</div>
-      ${runDate ? `<div class="mt-1 text-(--chart-text) text-[11px]" style="font-family: var(--font-mono);">${escapeHtml(runDate)}</div>` : ""}
-    </div>
-    <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
-      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">Scenario</div>
-      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${escapeHtml(sessionName || "-")}</div>
-    </div>
-  `;
-  els.rangeInfo.innerHTML = `
-    <div class="range-chip border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
-      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">All Range</div>
-      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${formatHms(0)} - ${formatHms(duration)}</div>
-      <div class="mt-1 text-(--chart-text) text-[11px]" style="font-family: var(--font-mono);">${formatClockAt(0)} - ${formatClockAt(duration)}</div>
-    </div>
-    <div class="range-chip ${isAllRange ? "" : "changed"} border border-(--line) border-l-2 bg-(--surface-raised) rounded-[3px] p-[12px_14px]">
-      <div class="text-[11px] text-(--chart-text) font-medium tracking-[0.08em] uppercase" style="font-family: var(--font-mono);">${isAllRange ? "Filtered Range: All selected" : "Filtered Range"}</div>
-      <div class="mt-1.5 text-[15px] text-(--text) font-medium tracking-[0.02em]" style="font-family: var(--font-mono);">${formatHms(start)} - ${formatHms(end)}</div>
-      <div class="mt-1 text-(--chart-text) text-[11px]" style="font-family: var(--font-mono);">${formatClockAt(start)} - ${formatClockAt(end)}</div>
-    </div>
-  `;
-  const transactions = buildTransactions();
-  renderMetrics(els.metrics, transactions, start, end);
-  renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
-  renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
-  // Setelah renderCharts: centang di tabel TPS dan SiteScope mengikuti pilihan seri, jadi
-  // tabelnya harus digambar setelah applySelection() menentukan default 10 serinya.
-  renderCharts(transactions, start, end);
-  renderTpsSummaryPanels();
-  refreshSeriesToolbars();
-  renderErrors();
-  els.status.textContent = `SESSION ${state.data.result.scenario.resultName || "RESULT"} | ${state.data.result.resultDir}`;
-}
-
-// Apply/Reset menjalankan ulang seluruh query dashboard, sama beratnya dengan Load Result, jadi
-// overlay-nya ikut muncul. Bedanya tidak ada tahap ingest di server: data sudah ada di cache, yang
-// berjalan cuma query, jadi 0-90% dibagi rata per query dan sisanya untuk render.
-async function withLoadTimer(loadingLabel, task) {
-  els.status.className = STATUS_BASE;
-  const startedAt = Date.now();
-  const timerInterval = setInterval(() => {
-    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-    els.status.textContent = `${loadingLabel}... ${elapsed}s`;
-  }, 100);
-  startLoadingOverlay(loadingLabel, newProgressToken());
-  try {
-    await task((done, total) => setProgress((90 * done) / total, `Query dashboard ${done}/${total}...`));
-    setProgress(100, "Selesai");
-    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
-    els.status.textContent += ` | Updated in ${elapsed}s`;
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  } finally {
-    clearInterval(timerInterval);
-    finishLoadingOverlay();
-  }
-}
-
-async function applyTimeFilter() {
-  if (!state.data) return;
-  const duration = state.data.result.scenario.durationSeconds || 0;
-  const start = parseHms(els.startTime.value);
-  const end = els.endTime.value.trim() ? parseHms(els.endTime.value) : duration;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
-    els.status.textContent = "Range waktu tidak valid.";
-    els.status.className = STATUS_ERR;
+// Filter ini mengubah query summary, series, dan overall sekaligus, jadi dashboard di-refresh
+// penuh seperti Apply filter waktu.
+async function applyTpsFilter(key, filter) {
+  state.tpsFilters[key] = filter;
+  if (!state.data) {
+    renderActivePage();
     return;
   }
-  state.appliedStart = start;
-  state.appliedEnd = end;
-  await withLoadTimer("Applying filter", async (onQueryProgress) => {
+  await withLoadTimer("Applying transaction filter", async (onQueryProgress) => {
     await refreshDashboardData(onQueryProgress);
-    renderAll();
-    els.status.textContent = `Filter applied: ${formatHms(start)} - ${formatHms(end)}`;
+    renderActivePage();
+    setStatus(`Filter ${key} applied: include "${filter.include || "(semua)"}", exclude "${filter.exclude || "(tidak ada)"}"`);
   });
-}
-
-async function applyTpsGranularity() {
-  if (!state.data) return;
-  const tpsGranularity = parsePositiveSeconds(els.tpsGranularity.value);
-  if (!Number.isFinite(tpsGranularity)) {
-    els.status.textContent = "Granularity grafik harus angka minimal 1 detik.";
-    els.status.className = STATUS_ERR;
-    return;
-  }
-  state.appliedTpsGranularity = tpsGranularity;
-  await withLoadTimer("Applying granularity", async (onQueryProgress) => {
-    await refreshDashboardData(onQueryProgress);
-    renderAll();
-    els.status.textContent = `Granularity grafik applied: ${tpsGranularity}s bucket`;
-  });
-}
-
-async function resetTpsGranularity() {
-  if (!state.data) return;
-  // Default-nya mengikuti durasi run yang sedang dibuka, bukan konstanta tetap.
-  const granularity = autoGranularitySeconds(state.data.result.scenario.durationSeconds);
-  els.tpsGranularity.value = String(granularity);
-  state.appliedTpsGranularity = granularity;
-  await withLoadTimer("Resetting granularity", async (onQueryProgress) => {
-    await refreshDashboardData(onQueryProgress);
-    renderAll();
-    els.status.textContent = `Granularity grafik reset to auto: ${granularity}s bucket`;
-  });
-}
-
-async function loadResult() {
-  const resultPath = els.resultPath.value.trim();
-  if (!resultPath) {
-    els.status.textContent = "Isi path hasil LoadRunner dulu, lalu klik Load Result.";
-    els.status.className = STATUS_ERR;
-    return;
-  }
-  els.loadBtn.disabled = true;
-  els.status.className = STATUS_BASE;
-
-  const startedAt = Date.now();
-  let timerInterval = setInterval(() => {
-    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-    els.status.textContent = `Loading... ${elapsed}s`;
-  }, 100);
-  // Ingest jalan di server, query dashboard di browser: 0-90% dari server, sisanya dari sini.
-  const progressToken = newProgressToken();
-  startLoadingOverlay("Load Result", progressToken, 0.9);
-
-  try {
-    const response = await fetch(`/api/load?path=${encodeURIComponent(resultPath)}&progress=${encodeURIComponent(progressToken)}`);
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Load failed");
-    localStorage.setItem("loadrunnerLastPath", resultPath);
-    state.data = payload;
-    const duration = payload.result.scenario.durationSeconds || 300;
-    els.startTime.value = "00:00:00";
-    els.endTime.value = formatHms(duration);
-    state.appliedStart = 0;
-    state.appliedEnd = duration;
-    state.appliedTpsGranularity = autoGranularitySeconds(duration);
-    els.tpsGranularity.value = String(state.appliedTpsGranularity);
-    resetErrorFilter();
-    setProgress(90, "Query dashboard...");
-    await refreshDashboardData((done, total) => setProgress(90 + (10 * done) / total, `Query dashboard ${done}/${total}...`));
-    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
-    renderAll();
-    els.status.textContent += ` | Loaded in ${elapsed}s`;
-    els.exportXlsxBtn.disabled = false;
-    els.exportXlsxBtn.title = "Semua tabel panel ke satu file .xlsx, satu sheet per panel";
-  } catch (error) {
-    els.status.textContent = error.message;
-    els.status.className = STATUS_ERR;
-  } finally {
-    clearInterval(timerInterval);
-    finishLoadingOverlay();
-    els.loadBtn.disabled = false;
-  }
 }
 
 function extraNamesParam(key) {
@@ -666,14 +364,8 @@ async function refreshDashboardData(onQueryProgress) {
       stddev: row.stddev,
     });
   }
-  state.transactions = transactions.rows.map((transaction) => ({
-    ...transaction,
-    groupName: resolveGroup(transaction.name),
-  }));
-  state.rpsTransactions = rpsTransactions.rows.map((transaction) => ({
-    ...transaction,
-    groupName: resolveGroup(transaction.name),
-  }));
+  state.transactions = transactions.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
+  state.rpsTransactions = rpsTransactions.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
   state.tpsSummary = tpsSummary.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
   state.tpsSummaryApi = tpsSummaryApi.rows.map((tx) => ({ ...tx, groupName: resolveGroup(tx.name) }));
   state.responseTimeRows = responseTime.rows;
@@ -687,15 +379,105 @@ async function refreshDashboardData(onQueryProgress) {
   state.tpsDetailSeriesRows = tpsDetailSeries.rows;
   state.tpsOverall = tpsOverall;
   state.tpsOverallSeriesRows = tpsOverall.series;
-  applyRpsOverallPayload(rpsOverall);
+  state.rpsOverall = rpsOverall;
+  state.rpsOverallSeriesRows = rpsOverall.series;
   state.seriesCountByType = dashboard.seriesCountByType ?? {};
-  const capHint = (total) => (total > SERIES_MAX ? `(top ${Math.min(total, SERIES_MAX)} of ${total} by volume)` : "");
-  els.seriesCountRt.textContent = capHint(responseTime.total ?? 0);
-  els.seriesCountRtApi.textContent = capHint(responseTimeApi.total ?? 0);
-  els.seriesCountTps.textContent = capHint(tpsSeries.total ?? 0);
-  els.seriesCountTpsApi.textContent = capHint(tpsApiSeries.total ?? 0);
-  els.seriesCountTpsDetail.textContent = capHint(tpsDetailSeries.total ?? 0);
+  // Jumlah kandidat seri per panel dibaca di halaman mana pun yang menampilkannya, jadi disimpan di
+  // state, bukan ditulis langsung ke DOM seperti sebelumnya.
+  state.seriesTotals = {
+    responseTime: responseTime.total ?? 0,
+    responseTimeApi: responseTimeApi.total ?? 0,
+    tpsTransaction: tpsSeries.total ?? 0,
+    tpsApi: tpsApiSeries.total ?? 0,
+    tpsDetail: tpsDetailSeries.total ?? 0,
+  };
+  // Baris SiteScope dan load generator bukan hasil fetch, tapi turunan dari graph. Kalau hanya
+  // dihitung saat panelnya dirender, sheet XLSX-nya kosong di halaman yang belum pernah dibuka.
+  refreshSiteScopeRows(start, end);
+  refreshLgHealthRows(start, end);
   await refreshErrors();
+}
+
+// Apply/Reset menjalankan ulang seluruh query dashboard, sama beratnya dengan Load Result, jadi
+// overlay-nya ikut muncul. Bedanya tidak ada tahap ingest di server: data sudah ada di cache, yang
+// berjalan cuma query, jadi 0-90% dibagi rata per query dan sisanya untuk render.
+async function withLoadTimer(loadingLabel, task) {
+  setStatus("");
+  const startedAt = Date.now();
+  const timerInterval = setInterval(() => {
+    setStatus(`${loadingLabel}... ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+  }, 100);
+  startLoadingOverlay(loadingLabel, newProgressToken());
+  try {
+    await task((done, total) => setProgress((90 * done) / total, `Query dashboard ${done}/${total}...`));
+    setProgress(100, "Selesai");
+    setStatus(`${els.status.textContent.replace(/ \| Updated in .*$/, "")} | Updated in ${((Date.now() - startedAt) / 1000).toFixed(2)}s`);
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    clearInterval(timerInterval);
+    finishLoadingOverlay();
+  }
+}
+
+async function applyTimeFilter() {
+  if (!state.data) return;
+  const duration = state.data.result.scenario.durationSeconds || 0;
+  const start = parseHms(els.startTime.value);
+  const end = els.endTime.value.trim() ? parseHms(els.endTime.value) : duration;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    setStatus("Range waktu tidak valid.", true);
+    return;
+  }
+  state.appliedStart = start;
+  state.appliedEnd = end;
+  await withLoadTimer("Applying filter", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
+    renderActivePage();
+    setStatus(`Filter applied: ${formatHms(start)} - ${formatHms(end)}`);
+  });
+}
+
+async function resetTimeFilter() {
+  if (!state.data) return;
+  const duration = state.data.result.scenario.durationSeconds || 0;
+  els.startTime.value = "00:00:00";
+  els.endTime.value = formatHms(duration);
+  state.appliedStart = 0;
+  state.appliedEnd = duration;
+  await withLoadTimer("Resetting filter", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
+    renderActivePage();
+    setStatus(`Filter reset: ${formatHms(0)} - ${formatHms(duration)}`);
+  });
+}
+
+async function applyTpsGranularity() {
+  if (!state.data) return;
+  const tpsGranularity = parsePositiveSeconds(els.tpsGranularity.value);
+  if (!Number.isFinite(tpsGranularity)) {
+    setStatus("Granularity grafik harus angka minimal 1 detik.", true);
+    return;
+  }
+  state.appliedTpsGranularity = tpsGranularity;
+  await withLoadTimer("Applying granularity", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
+    renderActivePage();
+    setStatus(`Granularity grafik applied: ${tpsGranularity}s bucket`);
+  });
+}
+
+async function resetTpsGranularity() {
+  if (!state.data) return;
+  // Default-nya mengikuti durasi run yang sedang dibuka, bukan konstanta tetap.
+  const granularity = autoGranularitySeconds(state.data.result.scenario.durationSeconds);
+  els.tpsGranularity.value = String(granularity);
+  state.appliedTpsGranularity = granularity;
+  await withLoadTimer("Resetting granularity", async (onQueryProgress) => {
+    await refreshDashboardData(onQueryProgress);
+    renderActivePage();
+    setStatus(`Granularity grafik reset to auto: ${granularity}s bucket`);
+  });
 }
 
 // Filter group tidak memanggil server sama sekali, semuanya render ulang di browser. Render itu
@@ -714,85 +496,109 @@ async function withRenderOverlay(label, render) {
   }
 }
 
-function renderGroupFilteredTables() {
-  const transactions = buildTransactions();
-  renderTable(transactions, els.txBody, els.showAllTransactionsBtn, "tx");
-  renderTable(state.rpsTransactions, els.txRpsBody, els.showAllRpsTransactionsBtn, "txRps");
-  renderTpsSummaryPanels();
-  // Group filter juga harus sampai ke panel response time.
-  RT_TABLES.forEach((table) => renderRtTable(table));
-}
-
 async function applyGroupFilter() {
   if (!state.data) return;
   state.groupFilter = els.groupFilter.value.trim();
-  await withRenderOverlay("Applying group filter", renderGroupFilteredTables);
+  await withRenderOverlay("Applying group filter", renderActivePage);
 }
 
 async function resetGroupFilter() {
   els.groupFilter.value = "";
   state.groupFilter = "";
   if (!state.data) return;
-  await withRenderOverlay("Resetting group filter", renderGroupFilteredTables);
+  await withRenderOverlay("Resetting group filter", renderActivePage);
 }
 
-async function resetTimeFilter() {
-  if (!state.data) return;
-  const duration = state.data.result.scenario.durationSeconds || 0;
-  els.startTime.value = "00:00:00";
-  els.endTime.value = formatHms(duration);
-  state.appliedStart = 0;
-  state.appliedEnd = duration;
-  await withLoadTimer("Resetting filter", async (onQueryProgress) => {
-    await refreshDashboardData(onQueryProgress);
-    renderAll();
-    els.status.textContent = `Filter reset: ${formatHms(0)} - ${formatHms(duration)}`;
+async function loadResult() {
+  const resultPath = els.resultPath.value.trim();
+  if (!resultPath) {
+    setStatus("Isi path hasil LoadRunner dulu, lalu klik Load Result.", true);
+    return;
+  }
+  els.loadBtn.disabled = true;
+  setStatus("");
+
+  const startedAt = Date.now();
+  const timerInterval = setInterval(() => {
+    setStatus(`Loading... ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+  }, 100);
+  // Ingest jalan di server, query dashboard di browser: 0-90% dari server, sisanya dari sini.
+  const progressToken = newProgressToken();
+  startLoadingOverlay("Load Result", progressToken, 0.9);
+
+  try {
+    const response = await fetch(`/api/load?path=${encodeURIComponent(resultPath)}&progress=${encodeURIComponent(progressToken)}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Load failed");
+    localStorage.setItem("loadrunnerLastPath", resultPath);
+    state.data = payload;
+    const duration = payload.result.scenario.durationSeconds || 300;
+    els.startTime.value = "00:00:00";
+    els.endTime.value = formatHms(duration);
+    state.appliedStart = 0;
+    state.appliedEnd = duration;
+    state.appliedTpsGranularity = autoGranularitySeconds(duration);
+    els.tpsGranularity.value = String(state.appliedTpsGranularity);
+    resetErrorFilter();
+    setProgress(90, "Query dashboard...");
+    await refreshDashboardData((done, total) => setProgress(90 + (10 * done) / total, `Query dashboard ${done}/${total}...`));
+    renderActivePage();
+    setStatus(`${els.status.textContent} | Loaded in ${((Date.now() - startedAt) / 1000).toFixed(2)}s`);
+    els.exportXlsxBtn.disabled = false;
+    els.exportXlsxBtn.title = "Semua tabel panel ke satu file .xlsx, satu sheet per panel";
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    clearInterval(timerInterval);
+    finishLoadingOverlay();
+    els.loadBtn.disabled = false;
+  }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────────────────────────
+
+function tableToTsv(table) {
+  const headerCells = [...table.querySelectorAll("thead th")].map((th) => {
+    const clone = th.cloneNode(true);
+    clone.querySelector(".sort-indicator")?.remove();
+    return clone.textContent.trim();
   });
+  const bodyRows = [...table.querySelectorAll("tbody tr")].map((tr) =>
+    [...tr.querySelectorAll("td")].map((td) => td.textContent.trim()).join("\t"));
+  return [headerCells.join("\t"), ...bodyRows].join("\n");
 }
 
-function syncToolbarHeight() {
-  const toolbar = document.getElementById("toolbar");
-  if (!toolbar) return;
-  document.documentElement.style.setProperty("--toolbar-height", `${toolbar.offsetHeight + 16}px`);
+async function copyTableRows(table, button) {
+  const text = tableToTsv(table);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+  const original = button.textContent;
+  button.textContent = "Copied!";
+  button.disabled = true;
+  setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+  }, 1200);
 }
 
-function initScrollspy() {
-  const navLinks = document.querySelectorAll(".sidebar-nav a");
-  const sections = [...navLinks].map((a) => document.getElementById(a.dataset.navTarget)).filter(Boolean);
-  const linkByTarget = new Map([...navLinks].map((a) => [a.dataset.navTarget, a]));
-
-  const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      navLinks.forEach((a) => a.classList.remove("active"));
-      linkByTarget.get(entry.target.id)?.classList.add("active");
-    }
-  }, { rootMargin: "-10% 0px -75% 0px", threshold: 0 });
-
-  sections.forEach((section) => observer.observe(section));
-
-  navLinks.forEach((a) => {
-    a.addEventListener("click", (event) => {
-      event.preventDefault();
-      document.getElementById(a.dataset.navTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
-}
-
-function updateSortIndicators() {
-  document.querySelectorAll("th[data-sort]").forEach((th) => {
-    const tableKey = th.closest("[data-table]")?.dataset.table;
-    const sort = tableKey ? state.sort[tableKey] : null;
-    const indicator = th.querySelector(".sort-indicator");
-    if (!indicator) return;
-    indicator.textContent = sort && sort.key === th.dataset.sort ? (sort.dir === "asc" ? "▲" : "▼") : "";
-  });
-}
-
+// Modal hidup di luar outlet, jadi tidak ikut hilang saat pindah halaman -- isinya di-render ulang
+// dari state setiap sort.
 function getTableRows(tableKey) {
   switch (tableKey) {
     case "tx": return buildTransactions();
     case "txRps": return state.rpsTransactions;
+    case "rtTable": return state.rtTableRows.responseTime;
+    case "rtApiTable": return state.rtTableRows.responseTimeApi;
     case "tpsSummary": return state.tpsSummary;
     case "tpsSummaryApi": return state.tpsSummaryApi;
     case "tpsDetail": return state.tpsDetail;
@@ -814,28 +620,20 @@ function refreshOpenModals() {
   }
 }
 
-function redrawCharts() {
-  if (!state.data) return;
-  const duration = state.data.result.scenario.durationSeconds || 0;
-  renderCharts(buildTransactions(), state.appliedStart, state.appliedEnd || duration);
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+  els.themeToggle.textContent = theme === "dark" ? "Light" : "Dark";
+  localStorage.setItem("loadrunnerTheme", theme);
+  renderActivePage();
 }
 
-function initSortableTables() {
-  document.addEventListener("click", (event) => {
-    const th = event.target.closest("th[data-sort]");
-    if (!th) return;
-    const tableKey = th.closest("[data-table]")?.dataset.table;
-    const current = tableKey ? state.sort[tableKey] : null;
-    if (!current) return;
-    const sortKey = th.dataset.sort;
-    const dir = current.key === sortKey && current.dir === "asc" ? "desc" : "asc";
-    state.sort[tableKey] = { key: sortKey, dir };
-    updateSortIndicators();
-    if (state.data) renderAll();
-    else if (tableKey === "errors") renderErrors();
-    refreshOpenModals();
-  });
+function syncToolbarHeight() {
+  const toolbar = document.getElementById("toolbar");
+  if (!toolbar) return;
+  document.documentElement.style.setProperty("--toolbar-height", `${toolbar.offsetHeight + 16}px`);
 }
+
+// ── Wiring shell ──────────────────────────────────────────────────────────────────────────────────
 
 els.loadBtn.addEventListener("click", loadResult);
 els.resultPath.addEventListener("keydown", (e) => { if (e.key === "Enter") loadResult(); });
@@ -843,159 +641,74 @@ els.exportXlsxBtn.addEventListener("click", () => {
   if (!state.data) return;
   const sheetCount = exportTablesToXlsx();
   if (!sheetCount) return;
-  els.status.className = STATUS_BASE;
-  els.status.textContent = `Exported ${sheetCount} tabel ke XLSX`;
+  setStatus(`Exported ${sheetCount} tabel ke XLSX`);
 });
-els.themeToggle.addEventListener("click", toggleTheme);
+els.themeToggle.addEventListener("click", () => applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark"));
 els.applyTpsGranularityBtn.addEventListener("click", applyTpsGranularity);
 els.resetTpsGranularityBtn.addEventListener("click", resetTpsGranularity);
 els.applyTimeBtn.addEventListener("click", applyTimeFilter);
 els.resetTimeBtn.addEventListener("click", resetTimeFilter);
 els.applyGroupFilterBtn.addEventListener("click", applyGroupFilter);
 els.resetGroupFilterBtn.addEventListener("click", resetGroupFilter);
-els.showAllTransactionsBtn.addEventListener("click", () => openTransactionModal(els, buildTransactions(), "All Transactions (BP)", "tx"));
-els.showAllRpsTransactionsBtn.addEventListener("click", () => openTransactionModal(els, state.rpsTransactions, "All Transactions (RPS_)", "txRps"));
-els.showAllRtBtn.addEventListener("click", () => openTransactionModal(els, filterByGroup(state.rtTableRows.responseTime, "transaction"), "Response Time By Transaction", "rtTable"));
-els.showAllRtApiBtn.addEventListener("click", () => openTransactionModal(els, filterByGroup(state.rtTableRows.responseTimeApi, "transaction"), "Response Time By API", "rtApiTable"));
+els.groupFilter.addEventListener("keydown", (e) => { if (e.key === "Enter") applyGroupFilter(); });
+
 els.closeTransactionModalBtn.addEventListener("click", () => closeTransactionModal(els));
 els.copyTransactionModalBtn.addEventListener("click", () => copyTableRows(els.transactionModalTable, els.copyTransactionModalBtn));
 els.transactionModal.addEventListener("click", (event) => {
   if (event.target === els.transactionModal) closeTransactionModal(els);
 });
-els.showAllTpsTransactionsBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummary, "TPS (Chart + Table)", "tpsSummary", "transaction"));
-els.showAllTpsApiBtn.addEventListener("click", () => openTpsModal(els, state.tpsSummaryApi, "RPS (Chart + Table)", "tpsSummaryApi", "api"));
-els.showAllTpsDetailBtn.addEventListener("click", () => openTpsModal(els, state.tpsDetail, "TPS Detail (Chart + Table)", "tpsDetail", "detail"));
-els.showAllSiteScopeCpuBtn.addEventListener("click", () => openTpsModal(els, state.siteScopeCpuRows, "SiteScope CPU Overall", "siteScopeCpu", "sitescope"));
-els.showAllSiteScopeMemoryBtn.addEventListener("click", () => openTpsModal(els, state.siteScopeMemoryRows, "SiteScope Memory Overall", "siteScopeMemory", "sitescope"));
 els.closeTpsModalBtn.addEventListener("click", () => closeTpsModal(els));
 els.copyTpsModalBtn.addEventListener("click", () => copyTableRows(els.tpsModalTable, els.copyTpsModalBtn));
 els.tpsModal.addEventListener("click", (event) => {
   if (event.target === els.tpsModal) closeTpsModal(els);
 });
-els.groupFilter.addEventListener("keydown", (e) => { if (e.key === "Enter") applyGroupFilter(); });
-window.addEventListener("resize", () => renderAll());
+
+// Sort dan aksi grafik ditangkap di level document: yang berubah adalah elemennya tiap kali halaman
+// dirender, bukan pendengarnya, jadi tidak perlu dipasang ulang tiap navigasi.
+document.addEventListener("click", (event) => {
+  const th = event.target.closest("th[data-sort]");
+  if (!th) return;
+  const tableKey = th.closest("[data-table]")?.dataset.table;
+  const current = tableKey ? state.sort[tableKey] : null;
+  if (!current) return;
+  const sortKey = th.dataset.sort;
+  const dir = current.key === sortKey && current.dir === "asc" ? "desc" : "asc";
+  state.sort[tableKey] = { key: sortKey, dir };
+  renderActivePage();
+  updateSortIndicators(document);
+  refreshOpenModals();
+});
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-chart-action]");
   if (!button) return;
   const panel = button.closest(".chart-panel");
   if (!panel) return;
 
-  if (button.dataset.chartAction === "download") {
-    downloadChartPng(panel);
-  } else if (button.dataset.chartAction === "copy") {
-    copyChartImage(panel, button);
-  } else if (button.dataset.chartAction === "expand") {
-    toggleExpandPanel(panel, button);
-  }
+  if (button.dataset.chartAction === "download") downloadChartPng(panel);
+  else if (button.dataset.chartAction === "copy") copyChartImage(panel, button);
+  else if (button.dataset.chartAction === "expand") toggleExpandPanel(panel, button);
 });
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!els.transactionModal.hidden) closeTransactionModal(els);
   else if (!els.tpsModal.hidden) closeTpsModal(els);
   else closeExpandedPanel();
 });
-// filterKey: panel yang memakai filter Include/Exclude (lihat DEFAULT_TPS_FILTERS); kosong berarti pakai namePrefix.
-async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingNames, filterKey = "") {
-  if (!state.data) return;
-  const { session, result } = state.data;
-  const duration = result.scenario.durationSeconds || 0;
-  const params = new URLSearchParams({
-    session,
-    start: String(state.appliedStart),
-    end: String(state.appliedEnd || duration),
-    granularity: String(state.appliedTpsGranularity),
-    maxSeries: String(SERIES_MAX),
-    extraNames: JSON.stringify([...(state.chartSelections[key] ?? []), ...missingNames]),
-  });
 
-  const response = await fetch(`${endpoint}?${params}${filterKey ? nameFilterParams(filterKey) : ""}`);
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Series query failed");
-  state[rowsField] = payload.rows;
+window.addEventListener("resize", renderActivePage);
+window.addEventListener("hashchange", navigate);
 
-  // Merge newly fetched series into chartAllSeries so Top buttons and re-renders have the data
-  const newSeries = seriesFromFlatRows(payload.rows);
-  const existing = chartAllSeries[key] ?? [];
-  const existingMap = new Map(existing.map((s) => [s.name, s]));
-  for (const s of newSeries) existingMap.set(s.name, s);
-  chartAllSeries[key] = [...existingMap.values()];
-}
-
-["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach((key) => {
-  const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
-  const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
-  // maxSeries: chart panels = 50, CPU/Memory panels = Infinity (no limit)
-  const isUnlimited = ["siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].includes(key);
-  const maxSeries = isUnlimited ? Infinity : 50;
-
-  // rankNames: sort candidates by the panel's primary metric (avg RT, avg TPS, avg CPU%, etc.)
-  let rankNames;
-  if (key === "responseTime" || key === "responseTimeApi") {
-    // Response time panels: sort by avg response time (already in state.rtTableRows)
-    rankNames = (names) => {
-      const rows = key === "responseTime" ? state.rtTableRows.responseTime : state.rtTableRows.responseTimeApi;
-      const byName = new Map(rows.map((r) => [r.name, r.avg ?? 0]));
-      return [...names].sort((a, b) => (byName.get(b) ?? 0) - (byName.get(a) ?? 0));
-    };
-  } else if (key === "tpsTransaction" || key === "tpsApi" || key === "tpsDetail") {
-    // TPS panels: sort by avg TPS from summary data (state.tpsSummary, state.tpsSummaryApi, state.tpsDetail)
-    rankNames = (names) => {
-      let rows;
-      if (key === "tpsTransaction") rows = state.tpsSummary;
-      else if (key === "tpsApi") rows = state.tpsSummaryApi;
-      else rows = state.tpsDetail;
-      const byName = new Map(rows.map((r) => [r.name, r.avgTps ?? 0]));
-      return [...names].sort((a, b) => (byName.get(b) ?? 0) - (byName.get(a) ?? 0));
-    };
-  } else {
-    // CPU/Memory panels: use their own siteRankNames/lgRankNames below
-    rankNames = (names) => names;
-  }
-
-  if (key === "responseTime") {
-    configureChartSelector(key, () => state.responseTimeNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing, "rt"), maxSeries, rankNames);
-  } else if (key === "responseTimeApi") {
-    configureChartSelector(key, () => state.responseTimeApiNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing, "rtApi"), maxSeries, rankNames);
-  } else if (key === "tpsTransaction") {
-    configureChartSelector(key, () => state.tpsSummary.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing, "tps"), maxSeries, rankNames);
-  } else if (key === "tpsApi") {
-    configureChartSelector(key, () => state.tpsSummaryApi.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing, "rps"), maxSeries, rankNames);
-  } else if (key === "tpsDetail") {
-    configureChartSelector(key, () => state.tpsDetail.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing, "tpsDetail"), maxSeries, rankNames);
-  } else if (key === "siteScopeCpu" || key === "siteScopeMemory") {
-    // SiteScope: sort by avg utilization %
-    const siteRankNames = (names) => {
-      const rows = key === "siteScopeCpu" ? state.siteScopeCpuRows : state.siteScopeMemoryRows;
-      const byHost = new Map(rows.map((r) => [r.host, r]));
-      return [...names].sort((a, b) => (byHost.get(b)?.avg ?? 0) - (byHost.get(a)?.avg ?? 0));
-    };
-    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries, siteRankNames);
-  } else if (key === "lgCpu" || key === "lgMemory" || key === "lgDisk") {
-    // Load Generator: sort by avg %
-    const lgRankNames = (names) => {
-      const metric = key === "lgCpu" ? "cpuAvg" : key === "lgMemory" ? "memoryAvg" : "diskAvg";
-      const rows = state.lgHealthRows;
-      const byHost = new Map(rows.map((r) => [r.host, r]));
-      return [...names].sort((a, b) => (byHost.get(b)?.[metric] ?? 0) - (byHost.get(a)?.[metric] ?? 0));
-    };
-    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries, lgRankNames);
-  } else {
-    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries);
-  }
-});
+// Search di toolbar panel hanya mengubah baris tabel mana yang tampil, jadi cukup render ulang
+// halaman yang sedang terbuka. Dipanggil sekali di sini, bukan tiap kali init halaman berjalan.
+onSeriesSearchChange(() => renderActivePage());
 
 setupChartPanelActions();
-onSeriesSearchChange(() => renderAll());
-mountTpsFilterBars();
+// Halaman harus terpasang sebelum tema applies: applyTheme() menggambar ulang halaman aktif untuk
+// menggambar ulang canvas dengan warna tema baru, jadi outlet-nya sudah harus berisi template.
+navigate();
 applyTheme(localStorage.getItem("loadrunnerTheme") === "dark" ? "dark" : "light");
 els.resultPath.value = localStorage.getItem("loadrunnerLastPath") || "";
 syncToolbarHeight();
 new ResizeObserver(syncToolbarHeight).observe(document.getElementById("toolbar"));
-initSortableTables();
-updateSortIndicators();
-initScrollspy();
