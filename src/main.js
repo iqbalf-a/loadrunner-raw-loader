@@ -8,7 +8,7 @@ import {
   buildTransactions,
   DEFAULT_TPS_FILTERS,
 } from "./state.js";
-import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, refreshSeriesToolbars, onSeriesSearchChange, seriesSearchQuery, SEARCH_ROWS_LIMIT, MAX_SELECTED_SERIES } from "./charts.js";
+import { drawMultiLineChart, transactionSeries, setupChartPanelActions, downloadChartPng, copyChartImage, toggleExpandPanel, closeExpandedPanel, configureChartSelector, refreshExpandedChartSelector, refreshSeriesToolbars, onSeriesSearchChange, seriesSearchQuery, SEARCH_ROWS_LIMIT, chartSelectors } from "./charts.js";
 import { renderMetrics, renderTable, renderTransactionRows, renderTpsSummaryTable, renderTpsOverall, updateTpsGranularityHeaders, openTransactionModal, closeTransactionModal, openTpsModal, closeTpsModal, renderTransactionModalContent, renderTpsModalContent, filterByGroup } from "./tables.js";
 import { renderSiteScopeSection } from "./sitescope.js";
 import { renderLgHealthSection } from "./lgmonitor.js";
@@ -16,7 +16,7 @@ import { refreshErrors, renderErrors, resetErrorFilter } from "./errors.js";
 import { newProgressToken, startLoadingOverlay, finishLoadingOverlay, setProgress } from "./progress.js";
 import { exportTablesToXlsx } from "./export.js";
 
-const SERIES_MAX = 30;
+const SERIES_MAX = 50;
 
 const chartAllSeries = {};
 
@@ -259,10 +259,17 @@ function renderTpsSummaryPanels() {
 }
 
 function applySelection(key, allSeries) {
-  chartAllSeries[key] = allSeries;
-  const names = allSeries.map((s) => s.name);
-  const selected = new Set(resolveSelection(key, names, MAX_SELECTED_SERIES));
-  return allSeries.filter((s) => selected.has(s.name));
+  // Merge newly fetched series into chartAllSeries (preserve existing ones)
+  const existing = chartAllSeries[key] ?? [];
+  const existingMap = new Map(existing.map((s) => [s.name, s]));
+  for (const s of allSeries) existingMap.set(s.name, s);
+  chartAllSeries[key] = [...existingMap.values()];
+
+  const names = chartAllSeries[key].map((s) => s.name);
+  const config = chartSelectors.get(key);
+  const maxSeries = config?.maxSeries ?? 10;
+  const selected = new Set(resolveSelection(key, names, maxSeries));
+  return chartAllSeries[key].filter((s) => selected.has(s.name));
 }
 
 function seriesFromFlatRows(rows) {
@@ -303,10 +310,9 @@ function renderRtTable({ key, tableKey, body }) {
   const allRows = filterByGroup(state.rtTableRows[key], "transaction")
     .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
   const query = seriesSearchQuery(key);
-  // Default: 30 baris pertama (TRANSACTION_SUMMARY_LIMIT = 20, tapi user minta 30).
-  // Kalau ada query search: tampilkan semua yang cocok (mirip renderTable).
-  const limit = query ? allRows.length : 30;
-  const displayRows = allRows.slice(0, limit);
+  // Default: tampilkan semua baris. Kalau ada query search: tampilkan semua yang cocok.
+  const limit = allRows.length;
+  const displayRows = allRows;
   const tbody = document.getElementById(body);
   tbody.innerHTML = displayRows.length
     ? renderTransactionRows(sortRows(displayRows, state.sort[tableKey]), tbody)
@@ -906,28 +912,80 @@ async function ensureSeriesLoaded(key, endpoint, namePrefix, rowsField, missingN
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Series query failed");
   state[rowsField] = payload.rows;
+
+  // Merge newly fetched series into chartAllSeries so Top buttons and re-renders have the data
+  const newSeries = seriesFromFlatRows(payload.rows);
+  const existing = chartAllSeries[key] ?? [];
+  const existingMap = new Map(existing.map((s) => [s.name, s]));
+  for (const s of newSeries) existingMap.set(s.name, s);
+  chartAllSeries[key] = [...existingMap.values()];
 }
 
 ["responseTime", "responseTimeApi", "tpsTransaction", "tpsApi", "tpsDetail", "siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].forEach((key) => {
   const loadedNames = () => chartAllSeries[key]?.map((s) => s.name) ?? [];
   const setSelected = (selected) => { state.chartSelections[key] = selected; redrawCharts(); };
+  // maxSeries: chart panels = 50, CPU/Memory panels = Infinity (no limit)
+  const isUnlimited = ["siteScopeCpu", "siteScopeMemory", "lgCpu", "lgMemory", "lgDisk"].includes(key);
+  const maxSeries = isUnlimited ? Infinity : 50;
+
+  // rankNames: sort candidates by the panel's primary metric (avg RT, avg TPS, avg CPU%, etc.)
+  let rankNames;
+  if (key === "responseTime" || key === "responseTimeApi") {
+    // Response time panels: sort by avg response time (already in state.rtTableRows)
+    rankNames = (names) => {
+      const rows = key === "responseTime" ? state.rtTableRows.responseTime : state.rtTableRows.responseTimeApi;
+      const byName = new Map(rows.map((r) => [r.name, r.avg ?? 0]));
+      return [...names].sort((a, b) => (byName.get(b) ?? 0) - (byName.get(a) ?? 0));
+    };
+  } else if (key === "tpsTransaction" || key === "tpsApi" || key === "tpsDetail") {
+    // TPS panels: sort by avg TPS from summary data (state.tpsSummary, state.tpsSummaryApi, state.tpsDetail)
+    rankNames = (names) => {
+      let rows;
+      if (key === "tpsTransaction") rows = state.tpsSummary;
+      else if (key === "tpsApi") rows = state.tpsSummaryApi;
+      else rows = state.tpsDetail;
+      const byName = new Map(rows.map((r) => [r.name, r.avgTps ?? 0]));
+      return [...names].sort((a, b) => (byName.get(b) ?? 0) - (byName.get(a) ?? 0));
+    };
+  } else {
+    // CPU/Memory panels: use their own siteRankNames/lgRankNames below
+    rankNames = (names) => names;
+  }
+
   if (key === "responseTime") {
     configureChartSelector(key, () => state.responseTimeNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing, "rt"));
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "BP", "responseTimeRows", missing, "rt"), maxSeries, rankNames);
   } else if (key === "responseTimeApi") {
     configureChartSelector(key, () => state.responseTimeApiNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing, "rtApi"));
+      (missing) => ensureSeriesLoaded(key, "/api/response-time-series", "RPS_", "responseTimeApiRows", missing, "rtApi"), maxSeries, rankNames);
   } else if (key === "tpsTransaction") {
     configureChartSelector(key, () => state.tpsSummary.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing, "tps"));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "BP", "tpsSeriesRows", missing, "tps"), maxSeries, rankNames);
   } else if (key === "tpsApi") {
     configureChartSelector(key, () => state.tpsSummaryApi.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing, "rps"));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-series", "RPS_", "tpsApiSeriesRows", missing, "rps"), maxSeries, rankNames);
   } else if (key === "tpsDetail") {
     configureChartSelector(key, () => state.tpsDetail.map((t) => t.name), loadedNames, () => state.chartSelections[key] ?? [], setSelected,
-      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing, "tpsDetail"));
+      (missing) => ensureSeriesLoaded(key, "/api/tps-detail-series", "BP", "tpsDetailSeriesRows", missing, "tpsDetail"), maxSeries, rankNames);
+  } else if (key === "siteScopeCpu" || key === "siteScopeMemory") {
+    // SiteScope: sort by avg utilization %
+    const siteRankNames = (names) => {
+      const rows = key === "siteScopeCpu" ? state.siteScopeCpuRows : state.siteScopeMemoryRows;
+      const byHost = new Map(rows.map((r) => [r.host, r]));
+      return [...names].sort((a, b) => (byHost.get(b)?.avg ?? 0) - (byHost.get(a)?.avg ?? 0));
+    };
+    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries, siteRankNames);
+  } else if (key === "lgCpu" || key === "lgMemory" || key === "lgDisk") {
+    // Load Generator: sort by avg %
+    const lgRankNames = (names) => {
+      const metric = key === "lgCpu" ? "cpuAvg" : key === "lgMemory" ? "memoryAvg" : "diskAvg";
+      const rows = state.lgHealthRows;
+      const byHost = new Map(rows.map((r) => [r.host, r]));
+      return [...names].sort((a, b) => (byHost.get(b)?.[metric] ?? 0) - (byHost.get(a)?.[metric] ?? 0));
+    };
+    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries, lgRankNames);
   } else {
-    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected);
+    configureChartSelector(key, loadedNames, loadedNames, () => state.chartSelections[key] ?? [], setSelected, null, maxSeries);
   }
 });
 

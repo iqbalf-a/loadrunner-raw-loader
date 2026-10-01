@@ -202,7 +202,9 @@ export function renderTpsSummaryTable(rows, tbody, showAllBtn, tableKey, mode = 
   const key = panelSeriesKey(tbody);
   const searched = rows.filter((tx) => matchesSeriesSearch(key, tx.name));
   const filtered = sortRows(filterByGroup(searched, mode), state.sort[tableKey]);
-  tbody.innerHTML = renderTpsSummaryRows(filtered.slice(0, TRANSACTION_SUMMARY_LIMIT), mode, tbody);
+  // Tampilkan semua baris (bukan dipotong di TRANSACTION_SUMMARY_LIMIT) supaya user bisa lihat
+  // seluruh transaksi yang lolos filter tanpa harus klik Show All setiap kali.
+  tbody.innerHTML = renderTpsSummaryRows(filtered, mode, tbody);
   showAllBtn.hidden = filtered.length === 0;
   showAllBtn.textContent = `Show All (${filtered.length})`;
 }

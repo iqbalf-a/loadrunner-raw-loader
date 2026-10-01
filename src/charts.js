@@ -3,11 +3,10 @@ import { state, graphByType, resolveSelection, rowsByMeasurement } from "./state
 import { composeChartImage } from "./chart-snapshot.js";
 
 const chartInstances = new WeakMap();
-const chartSelectors = new Map();
+export const chartSelectors = new Map();
 const searchQueries = new Map();
 const seriesSearch = new Map();
 const searchListeners = new Set();
-export const MAX_SELECTED_SERIES = 10;
 const SEARCH_RESULTS_LIMIT = 150;
 // Batas baris tabel ketika kotak search panel response time diisi: statistik per nama diambil dari
 // server, jadi jangan sampai satu ketikan memunculkan ratusan baris sekaligus.
@@ -27,8 +26,11 @@ export function onSeriesSearchChange(listener) {
 // getLoadedNames: series currently fetched and ready to plot (the default top-N pool).
 // ensureLoaded(names): optional async hook to fetch data for names picked via search that
 // aren't in the loaded pool yet — lets users pin a specific transaction outside the top-N.
-export function configureChartSelector(key, getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded) {
-  chartSelectors.set(key, { getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded });
+// maxSeries: maximum selectable series (default 10, Infinity = no limit)
+// rankNames(names): optional function to sort candidates by panel metric (avg RT, avg TPS, avg %)
+//   for Top 10/30/50 buttons. Default: sort by avg descending.
+export function configureChartSelector(key, getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded, maxSeries = 10, rankNames = null) {
+  chartSelectors.set(key, { getAllNames, getLoadedNames, getSelected, setSelected, ensureLoaded, maxSeries, rankNames });
 }
 
 function selectorListHtml(names, selected) {
@@ -46,14 +48,16 @@ function renderSelectorList(panel) {
 
   const allNames = config.getAllNames();
   const loadedNames = new Set(config.getLoadedNames());
-  const selected = resolveSelection(key, allNames, MAX_SELECTED_SERIES);
+  const maxSeries = config.maxSeries ?? 10;
+  const selected = resolveSelection(key, allNames, maxSeries);
 
   const query = (searchQueries.get(key) ?? "").trim().toLowerCase();
   const visibleNames = query
     ? allNames.filter((name) => name.toLowerCase().includes(query)).slice(0, SEARCH_RESULTS_LIMIT)
     : allNames.filter((name) => loadedNames.has(name) || selected.includes(name));
 
-  selector.querySelector(".chart-series-selector-count").textContent = `${selected.length}/${MAX_SELECTED_SERIES}`;
+  const countText = maxSeries === Infinity ? `${selected.length}/${allNames.length}` : `${selected.length}/${maxSeries}`;
+  selector.querySelector(".chart-series-selector-count").textContent = countText;
   selector.querySelector(".chart-series-selector-list").innerHTML = selectorListHtml(visibleNames, selected);
 }
 
@@ -65,15 +69,28 @@ function renderChartSelector(panel) {
   // di atas grafik -- panel tanpa tabel, seperti chart Load Generator, tetap memakainya.
   if (panel.querySelector("table[data-table]")) return;
   let selector = panel.querySelector(".chart-series-selector");
+  const maxSeries = config.maxSeries ?? 10;
   if (!selector) {
     selector = document.createElement("div");
     selector.className = "chart-series-selector";
+    const heading = maxSeries === Infinity
+      ? `Select series (${config.getAllNames().length} available)`
+      : `Select up to ${maxSeries} series`;
+    const topButtons = maxSeries !== Infinity
+      ? `<div class="chart-series-top-btns">
+          <button type="button" class="chart-series-top-btn" data-top="10" title="Pilih 10 seri teratas">Top 10</button>
+          <button type="button" class="chart-series-top-btn" data-top="30" title="Pilih 30 seri teratas">Top 30</button>
+          <button type="button" class="chart-series-top-btn" data-top="50" title="Pilih 50 seri teratas">Top 50</button>
+        </div>`
+      : "";
     selector.innerHTML = `
       <div class="chart-series-selector-heading">
-        <span>Select up to ${MAX_SELECTED_SERIES} series</span>
+        <span>${heading}</span>
         <button type="button" class="chart-series-clear-btn" title="Kosongkan semua pilihan">Deselect All</button>
+        ${maxSeries === Infinity ? `<button type="button" class="chart-series-select-all-btn" title="Pilih semua seri">Select All</button>` : ""}
         <span class="chart-series-selector-count"></span>
       </div>
+      ${topButtons}
       <input type="search" class="chart-series-search" placeholder="Cari transaksi...">
       <div class="chart-series-selector-list"></div>
     `;
@@ -86,6 +103,34 @@ function renderChartSelector(panel) {
       event.stopPropagation();
       config.setSelected([]);
       renderSelectorList(panel);
+    });
+    if (maxSeries === Infinity) {
+      selector.querySelector(".chart-series-select-all-btn").addEventListener("click", (event) => {
+        event.stopPropagation();
+        config.setSelected(config.getAllNames());
+        renderSelectorList(panel);
+      });
+    }
+    // Top N handlers for BOTH limited AND unlimited panels (expanded panel)
+    selector.querySelectorAll(".chart-series-top-btn").forEach((btn) => {
+      btn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const top = Number(btn.dataset.top);
+        const ranked = config.rankNames ? config.rankNames(config.getAllNames()) : config.getAllNames();
+        const topNames = ranked.slice(0, top);
+        // Fetch missing series data before selecting (same as manual checkbox behavior)
+        const loaded = new Set(config.getLoadedNames());
+        const missing = topNames.filter((name) => !loaded.has(name));
+        if (missing.length && config.ensureLoaded) {
+          try {
+            await config.ensureLoaded(missing);
+          } catch (e) {
+            // Ignore fetch errors; selection will still apply to what we have
+          }
+        }
+        config.setSelected(topNames);
+        renderSelectorList(panel);
+      });
     });
   }
   selector.querySelector(".chart-series-search").value = searchQueries.get(key) ?? "";
@@ -213,10 +258,23 @@ function setupSeriesToolbars() {
     const wrap = table?.parentElement;
     if (!table || !wrap) return;
 
+    const config = chartSelectors.get(panel.dataset.chartSelector);
+    const maxSeries = config?.maxSeries ?? 10;
+
     const toolbar = document.createElement("div");
     toolbar.className = "series-toolbar";
+    const topBtns = `<div class="series-toolbar-top-btns">
+        <button type="button" class="series-toolbar-btn" data-top="10" title="Pilih 10 seri teratas">Top 10</button>
+        <button type="button" class="series-toolbar-btn" data-top="30" title="Pilih 30 seri teratas">Top 30</button>
+        <button type="button" class="series-toolbar-btn" data-top="50" title="Pilih 50 seri teratas">Top 50</button>
+      </div>`;
+    const selectAllBtn = maxSeries === Infinity
+      ? `<button type="button" class="series-toolbar-btn" data-series-action="select-all" title="Pilih semua seri">Select All</button>`
+      : "";
     toolbar.innerHTML = `
       <button type="button" class="series-toolbar-btn" data-series-action="clear" title="Kosongkan semua centang, grafik jadi kosong">Deselect All</button>
+      ${topBtns}
+      ${selectAllBtn}
       <span class="series-toolbar-count muted"></span>
       <input type="search" class="series-toolbar-search" placeholder="Cari transaksi...">
     `;
@@ -237,6 +295,38 @@ function setupSeriesToolbars() {
     toolbar.querySelector("[data-series-action='clear']").addEventListener("click", () => {
       chartSelectors.get(key)?.setSelected([]);
       refreshSeriesToolbars();
+    });
+    // Select All handler (only for unlimited panels where the button exists)
+    if (maxSeries === Infinity) {
+      toolbar.querySelector("[data-series-action='select-all']").addEventListener("click", () => {
+        const cfg = chartSelectors.get(key);
+        if (cfg) {
+          cfg.setSelected(cfg.getAllNames());
+          refreshSeriesToolbars();
+        }
+      });
+    }
+    // Top N handlers for BOTH limited AND unlimited panels
+    toolbar.querySelectorAll("[data-top]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const cfg = chartSelectors.get(key);
+        if (!cfg) return;
+        const top = Number(btn.dataset.top);
+        const ranked = cfg.rankNames ? cfg.rankNames(cfg.getAllNames()) : cfg.getAllNames();
+        const topNames = ranked.slice(0, top);
+        // Fetch missing series data before selecting (same as manual checkbox behavior)
+        const loaded = new Set(cfg.getLoadedNames());
+        const missing = topNames.filter((name) => !loaded.has(name));
+        if (missing.length && cfg.ensureLoaded) {
+          try {
+            await cfg.ensureLoaded(missing);
+          } catch (e) {
+            // Ignore fetch errors; selection will still apply to what we have
+          }
+        }
+        cfg.setSelected(topNames);
+        refreshSeriesToolbars();
+      });
     });
 
     const headRow = table.querySelector("thead tr");
@@ -262,9 +352,12 @@ export function refreshSeriesToolbars() {
     const panel = toolbar.closest("[data-chart-selector]");
     const key = panel?.dataset.chartSelector;
     if (!key) return;
+    const config = chartSelectors.get(key);
+    const maxSeries = config?.maxSeries ?? 10;
     const selected = new Set(state.chartSelections[key] ?? []);
     toolbar.querySelector(".series-toolbar-search").value = seriesSearch.get(key) ?? "";
-    toolbar.querySelector(".series-toolbar-count").textContent = `${selected.size}/${MAX_SELECTED_SERIES} seri`;
+    const countText = maxSeries === Infinity ? `${selected.size}/${config.getAllNames().length}` : `${selected.size}/${maxSeries}`;
+    toolbar.querySelector(".series-toolbar-count").textContent = `${countText} seri`;
     const rows = [...panel.querySelectorAll("table[data-table] tbody [data-series-pick]")];
     let picked = 0;
     for (const input of rows) {
@@ -279,14 +372,18 @@ export function refreshSeriesToolbars() {
   });
 }
 
-// Batas MAX_SELECTED_SERIES ada di UI karena satu grafik dengan 30 garis hanya jadi noise.
+// Batas maxSeries ada di UI karena satu grafik dengan banyak garis hanya jadi noise.
 // Centang yang ditolak kembali seperti semula, dan hitungan di toolbar sempat menuliskan
 // alasannya supaya user tahu itu bukan checkbox-nya yang rusak.
 function flashSeriesLimit(toolbar) {
   const count = toolbar?.querySelector(".series-toolbar-count");
   if (!count) return;
   const original = count.textContent;
-  count.textContent = `maksimal ${MAX_SELECTED_SERIES} seri`;
+  const panel = toolbar.closest("[data-chart-selector]");
+  const key = panel?.dataset.chartSelector;
+  const config = key ? chartSelectors.get(key) : null;
+  const maxSeries = config?.maxSeries ?? 10;
+  count.textContent = maxSeries === Infinity ? "no limit" : `maksimal ${maxSeries} seri`;
   count.classList.add("series-toolbar-count-warn");
   setTimeout(() => {
     count.textContent = original;
@@ -308,11 +405,12 @@ document.addEventListener("change", async (event) => {
     const key = panel?.dataset.chartSelector;
     const config = chartSelectors.get(key);
     if (!config) return;
+    const maxSeries = config.maxSeries ?? 10;
     const names = [...panel.querySelectorAll("table[data-table] tbody [data-series-pick]")].map((input) => input.value);
     let rejected = false;
     if (!toggleAll.checked) {
       config.setSelected([]);
-    } else if (names.length <= MAX_SELECTED_SERIES) {
+    } else if (maxSeries === Infinity || names.length <= maxSeries) {
       toggleAll.disabled = true;
       try {
         await config.ensureLoaded?.(names);
@@ -336,11 +434,12 @@ document.addEventListener("change", async (event) => {
   const key = panel?.dataset.chartSelector;
   const config = chartSelectors.get(key);
   if (!config) return;
+  const maxSeries = config.maxSeries ?? 10;
   const current = config.getSelected();
   const selected = input.checked
     ? [...new Set([...current, input.value])]
     : current.filter((name) => name !== input.value);
-  const rejected = selected.length > MAX_SELECTED_SERIES;
+  const rejected = maxSeries !== Infinity && selected.length > maxSeries;
   if (rejected) input.checked = false;
   else {
     const loaded = new Set(config.getLoadedNames());
@@ -366,8 +465,9 @@ document.addEventListener("change", async (event) => {
   const panel = input.closest(".chart-panel");
   const config = chartSelectors.get(panel?.dataset.chartSelector);
   if (!config) return;
+  const maxSeries = config.maxSeries ?? 10;
   const selected = [...panel.querySelectorAll(".chart-series-selector input:checked")].map((checkbox) => checkbox.value);
-  if (selected.length > MAX_SELECTED_SERIES) {
+  if (maxSeries !== Infinity && selected.length > maxSeries) {
     input.checked = false;
     return;
   }
