@@ -1,4 +1,4 @@
-import { percentile } from "./format.js";
+import { escapeHtml, percentile } from "./format.js";
 import { state, graphByType, measurementName, inRange, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
 import { drawMultiLineChart, seriesPickCell, seriesSearchQuery } from "./charts.js";
 
@@ -65,10 +65,10 @@ export function refreshSiteScopeRows(start, end) {
   state.siteScopeMemoryRows = siteScopeHostRows(MEMORY_PATTERN, start, end);
 }
 
-export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey, showAllBtn, stateKey) {
-  const hostRows = siteScopeHostRows(pattern, start, end);
-  // Disimpan supaya modal "Show All" memakai baris yang sama dengan tabel panel.
-  if (stateKey) state[stateKey] = hostRows;
+// Barisnya diambil dari state yang sudah diisi refreshSiteScopeRows() saat dashboard di-refresh.
+// Dihitung ulang di sini hanya akan jadi jalan lain untuk data yang sama, dengan risiko menimpa
+// state memakai hasil kedua yang urutannya bisa beda.
+export function renderSiteScopeMetricTable(target, hostRows, tableKey, showAllBtn) {
   const key = target.closest("[data-chart-selector]")?.dataset.chartSelector ?? "";
   const query = seriesSearchQuery(key).toLowerCase();
   const sorted = sortRows(hostRows.filter((row) => !query || row.host.toLowerCase().includes(query)), state.sort[tableKey]);
@@ -79,7 +79,7 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
   target.innerHTML = sorted.slice(0, showAllBtn ? TRANSACTION_SUMMARY_LIMIT : sorted.length).map((row) => `
       <tr class="hover:bg-(--surface)">
         ${seriesPickCell(target, row.host)}
-        <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${row.host}</td>
+        <td class="px-3.5 py-2.25 border-b border-(--line) text-left whitespace-nowrap">${escapeHtml(row.host)}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.min.toFixed(3)}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.avg.toFixed(3)}</td>
         <td class="px-3.5 py-2.25 border-b border-(--line) text-right whitespace-nowrap">${row.max.toFixed(3)}</td>
@@ -92,5 +92,5 @@ export function renderSiteScopeMetricTable(target, pattern, start, end, tableKey
 export function renderSiteScopeMetric(selector, pattern, els, start, end, applySelection) {
   const colors = ["#00bf8f", "#2f7df6", "#ff416d", "#8b5cf6"];
   drawMultiLineChart(els.chart, applySelection(selector, siteScopeSeries(pattern, start, end, colors)), start, end);
-  renderSiteScopeMetricTable(els.body, pattern, start, end, selector, els.showAllBtn, `${selector}Rows`);
+  renderSiteScopeMetricTable(els.body, state[`${selector}Rows`] ?? [], selector, els.showAllBtn);
 }

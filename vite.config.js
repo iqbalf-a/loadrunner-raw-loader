@@ -1,9 +1,29 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
+import { readFile } from "node:fs/promises";
 import { createConsoleSummary } from "./loadrunner-raw-loader.js";
 import { openLoadRunnerCache, queryDashboard, queryTransactions, queryTpsSummary, queryResponseTimeSeries, queryTpsSeries, queryTpsDetailSummary, queryTpsDetailSeries, queryTpsOverall } from "./loadrunner-duckdb-cache.js";
 import { queryErrors } from "./loadrunner-errors.js";
 import { startProgress, readProgress } from "./progress.js";
+
+// Session adalah 24 hex digit pertama dari sha256 path result (lihat cacheKey di
+// loadrunner-duckdb-cache.js), jadi nilainya sudah dibatasi bentuknya. Polanya diperiksa di sini
+// karena session datang dari query string dan langsung dipakai sebagai nama berkas: tanpa guard,
+// `session=../../../../etc/foo` akan membaca berkas di luar folder cache.
+const SESSION_KEY = /^[0-9a-f]{24}$/;
+
+async function loadSessionMetadata(session) {
+  if (!SESSION_KEY.test(session ?? "")) throw new Error("Parameter session tidak valid.");
+  return JSON.parse(await readFile(new URL(`./.loadrunner-cache/${session}.json`, import.meta.url), "utf8"));
+}
+
+// Session wajib ada untuk semua endpoint dashboard/tabel, jadi pesan errornya dibedakan dari
+// session yang salah bentuk.
+async function requireSession(url) {
+  const session = url.searchParams.get("session");
+  if (!session) throw new Error("Parameter session wajib diisi.");
+  return loadSessionMetadata(session);
+}
 
 function parseExtraNames(url) {
   const raw = url.searchParams.get("extraNames");
@@ -88,10 +108,7 @@ export default defineConfig({
         server.middlewares.use("/api/dashboard", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryDashboard(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
               maxSeriesPerGraph: Number(url.searchParams.get("maxSeries")) || undefined,
               focusGraphType: url.searchParams.get("focusGraphType") || undefined,
@@ -105,6 +122,7 @@ export default defineConfig({
           try {
             // Support both GET (query params) and POST (JSON body)
             let session, start, end, limit, offset, namePrefix, nameFilter, order;
+            let cached;
             if (req.method === "POST") {
               let body = "";
               for await (const chunk of req) body += chunk;
@@ -117,9 +135,11 @@ export default defineConfig({
               namePrefix = parsed.namePrefix;
               nameFilter = normalizeNameFilter(parsed.nameFilter);
               order = parsed.order;
+              if (!session) throw new Error("Parameter session wajib diisi.");
+              cached = await loadSessionMetadata(session);
             } else {
               const url = new URL(req.url ?? "", "http://127.0.0.1");
-              session = url.searchParams.get("session");
+              cached = await requireSession(url);
               start = url.searchParams.get("start");
               end = url.searchParams.get("end");
               limit = url.searchParams.get("limit");
@@ -128,9 +148,6 @@ export default defineConfig({
               nameFilter = parseNameFilter(url);
               order = url.searchParams.get("order");
             }
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
             sendJson(res, 200, await queryTransactions(cached, Number(start), Number(end), Number(limit), Number(offset), namePrefix || "", nameFilter, order || "name"));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -139,10 +156,7 @@ export default defineConfig({
         server.middlewares.use("/api/tps-summary", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryTpsSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), Number(url.searchParams.get("limit")), Number(url.searchParams.get("offset")), url.searchParams.get("namePrefix") || "", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -151,10 +165,7 @@ export default defineConfig({
         server.middlewares.use("/api/tps-detail-summary", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryTpsDetailSummary(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -163,10 +174,7 @@ export default defineConfig({
         server.middlewares.use("/api/tps-detail-series", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryTpsDetailSeries(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "BP",
@@ -180,10 +188,7 @@ export default defineConfig({
         server.middlewares.use("/api/tps-overall", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryTpsOverall(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), url.searchParams.get("namePrefix") || "BP", parseNameFilter(url)));
           } catch (error) {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
@@ -192,10 +197,7 @@ export default defineConfig({
         server.middlewares.use("/api/response-time-series", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryResponseTimeSeries(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "",
@@ -210,10 +212,9 @@ export default defineConfig({
           const url = new URL(req.url ?? "", "http://127.0.0.1");
           const progress = startProgress(url.searchParams.get("progress") ?? "");
           try {
+            // Session opsional di endpoint ini: panel Errors bisa jalan hanya dari path SqliteDb.db.
             const session = url.searchParams.get("session");
-            const cached = session
-              ? JSON.parse(await (await import("node:fs/promises")).readFile(new URL(`./.loadrunner-cache/${session}.json`, import.meta.url), "utf8"))
-              : null;
+            const cached = session ? await loadSessionMetadata(session) : null;
             const optionalNumber = (name) => {
               const raw = url.searchParams.get(name);
               return raw === null || raw === "" ? undefined : Number(raw);
@@ -239,10 +240,7 @@ export default defineConfig({
         server.middlewares.use("/api/tps-series", async (req, res) => {
           try {
             const url = new URL(req.url ?? "", "http://127.0.0.1");
-            const session = url.searchParams.get("session");
-            if (!session) throw new Error("Parameter session wajib diisi.");
-            const metadataPath = new URL(`./.loadrunner-cache/${session}.json`, import.meta.url);
-            const cached = JSON.parse(await (await import("node:fs/promises")).readFile(metadataPath, "utf8"));
+            const cached = await requireSession(url);
             sendJson(res, 200, await queryTpsSeries(cached, Number(url.searchParams.get("start")), Number(url.searchParams.get("end")), Number(url.searchParams.get("granularity")), {
               maxSeries: Number(url.searchParams.get("maxSeries")) || undefined,
               namePrefix: url.searchParams.get("namePrefix") || "",

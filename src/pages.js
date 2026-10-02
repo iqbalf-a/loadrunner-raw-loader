@@ -1,5 +1,6 @@
-import { state, sortRows, resolveGroup, buildTransactions, DEFAULT_TPS_FILTERS } from "./state.js";
+import { state, sortRows, resolveGroup, DEFAULT_TPS_FILTERS } from "./state.js";
 import { escapeHtml, formatHms, formatClockAt } from "./format.js";
+import { TPS_MODE_COLUMNS, overallColumns } from "./tps-columns.js";
 import {
   drawMultiLineChart,
   transactionSeries,
@@ -38,13 +39,10 @@ function bindOnce(node, handler) {
   node.addEventListener("click", handler);
 }
 
-// Template halaman memakai id yang sama persis dengan section yang dulu ada di index.html, jadi
-// renderer di tables.js/sitescope.js/lgmonitor.js/errors.js tidak perlu tahu soal halaman.
-
 // ── Potongan markup yang diulang antar halaman ──────────────────────────────────────────────────
 // Tiap halaman adalah template HTML yang sama persis dengan section yang dulu ada di index.html:
 // kelas, id, data-chart-selector, data-tps-filter, dan data-table harus tetap sama supaya renderer
-// di tables.js/sitescope.js/lgmonitor.js tidak perlu tahu soal halaman.
+// di tables.js/sitescope.js/lgmonitor.js/errors.js tidak perlu tahu soal halaman.
 
 const thSorted = (key, label, align = "right") => `<th class="px-3.5 py-2.5 border-b border-(--line) text-${align} text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="${key}">${label} <span class="sort-indicator text-(--signal)"></span></th>`;
 
@@ -53,8 +51,12 @@ const thGrained = (key, label) => `<th class="px-3.5 py-2.5 border-b border-(--l
 
 const thPlain = (label, { align = "right", grain = false } = {}) => `<th class="px-3.5 py-2.5 border-b border-(--line) text-${align} text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap">${label}${grain ? ' <span data-granularity-suffix class="muted normal-case"></span>' : ""}</th>`;
 
-const tpsHead = (columns) => `<tr>${columns
-  .map(([key, label, align = "right"]) => (key === "minTps" || key === "maxTps" ? thGrained(key, label) : thSorted(key, label, align)))
+// Definisi kolom TPS/RPS ada di tps-columns.js; halaman ini cuma membentuk markup header-nya
+// supaya renderer tabel, modal, dan sheet XLSX ikut memakai urutan serta label yang sama.
+const columnsFor = (mode) => TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
+
+const tpsHead = (mode) => `<tr>${columnsFor(mode)
+  .map((column) => (column.grained ? thGrained(column.key, column.label) : thSorted(column.key, column.label, column.align)))
   .join("")}</tr>`;
 
 const TX_COLUMNS = [
@@ -66,11 +68,6 @@ const TX_COLUMNS = [
 ];
 
 const TX_HEAD = `<tr>${TX_COLUMNS.map(([key, label, align]) => thSorted(key, label, align)).join("")}</tr>`;
-
-const TX_TPS_COLUMNS = [["name", "Transaction", "left"], ["groupName", "Group", "left"], ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"]];
-const API_TPS_COLUMNS = [["name", "API", "left"], ["groupName", "Group", "left"], ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"]];
-// TPS Detail: satu baris per BP group, jadi kolom namanya sudah embody group-nya.
-const DETAIL_TPS_COLUMNS = [["name", "BP Group", "left"], ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"]];
 
 const HOST_COLUMNS = [["host", "Host", "left"], ["min", "Min (%)"], ["avg", "Avg (%)"], ["max", "Max (%)"]];
 const HOST_HEAD = `<tr>${HOST_COLUMNS.map(([key, label, align]) => thSorted(key, label, align)).join("")}</tr>`;
@@ -240,7 +237,7 @@ const overview = {
         + chip(isAllRange ? "Filtered Range: All selected" : "Filtered Range", rangeText(start, end), `${formatClockAt(start)} - ${formatClockAt(end)}`, !isAllRange)
       : "";
 
-    renderMetrics(outlet.querySelector("#metrics"), buildTransactions(), start, end);
+    renderMetrics(outlet.querySelector("#metrics"), state.transactions, start, end);
     finishPage(ctx);
   },
 };
@@ -295,7 +292,7 @@ const transactions = transactionsPage({
   filterKey: "tx",
   bodyId: "txBody",
   btnId: "showAllTransactionsBtn",
-  rows: () => buildTransactions(),
+  rows: () => state.transactions,
   modalTitle: "All Transactions (BP)",
   showRange: true,
 });
@@ -336,14 +333,27 @@ const rtTableRequests = new Map();
 // Peringkat total response time per panel, diisi dari respons server di updateRtTables.
 const rtVolumeRank = { responseTime: new Map(), responseTimeApi: new Map() };
 
+// Ketiga cache di bawah menyimpan data result yang SEDANG DIBUKA. Kunci request-nya ikut memuat
+// session, jadi hasil fetch tidak akan salah dipakai -- tapi baris dan peringkat yang sudah
+// tersimpan akan tetap tampil di layar sampai respons result baru tiba. Reset di sini supaya
+// result berikutnya mulai dari kosong, bukan dari sisa result sebelumnya.
+export function resetRtTableCache() {
+  rtTableRequests.clear();
+  for (const key of Object.keys(rtVolumeRank)) rtVolumeRank[key] = new Map();
+  for (const key of Object.keys(state.rtTableRows)) state.rtTableRows[key] = [];
+}
+
 function renderRtTable(ctx, spec) {
   const { outlet, els: shell } = ctx;
   // Urutan baris = peringkat total response time terbesar dulu, bukan urutan centang. Peringkat
   // ini ikut dari server, karena tabel sekarang memuat semua kandidat seri panel -- bukan cuma
   // top-N yang sudah digambar -- jadi `chartAllSeries` tidak bisa lagi jadi acuan urutan.
+  // Disalin dulu sebelum diurutkan: filterByGroup() mengembalikan array aslinya kalau tidak ada
+  // filter group, jadi sort() di tempat akan mengubah state.rtTableRows di luar render.
   const order = new Map([...rtVolumeRank[spec.key].keys()].map((name, index) => [name, index]));
-  const allRows = filterByGroup(state.rtTableRows[spec.key], "transaction")
-    .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
+  const unranked = Number.MAX_SAFE_INTEGER;
+  const allRows = [...filterByGroup(state.rtTableRows[spec.key], "transaction")]
+    .sort((a, b) => (order.get(a.name) ?? unranked) - (order.get(b.name) ?? unranked));
   const query = seriesSearchQuery(spec.key);
   // Default: tampilkan semua baris. Kalau ada query search: tampilkan semua yang cocok.
   const tbody = outlet.querySelector(`#${spec.body}`);
@@ -461,11 +471,13 @@ function renderTpsPanels(ctx, specs, canvasIds) {
   }
 }
 
-const overallPanel = (label, grain, canvasId, bodyId, filterKey) => `
+// Kolomnya sama persis dengan tabel TPS, Minus kolom nama: panel ini cuma punya satu baris.
+// Tag granularity tetap muncul di Min/Max lewat thPlain, jadi angkanya tidak dibaca sebagai absolut.
+const overallPanel = (label, metric, canvasId, bodyId, filterKey) => `
   <div data-chart-table="${filterKey}" data-tps-filter="${filterKey}" class="panel chart-panel wide overflow-hidden border border-(--line) bg-(--surface-raised) rounded-[3px]">
     ${titleRow(`<span>${label}</span>`)}
     ${chartWrap(canvasId)}
-    ${plainTable(`<tr>${thPlain(`Min ${grain}`, { grain: true })}${thPlain(`Avg ${grain}`)}${thPlain(`Max ${grain}`, { grain: true })}${thPlain("Points")}</tr>`, bodyId)}
+    ${plainTable(`<tr>${overallColumns(metric).map((column) => thPlain(column.label, { grain: column.grained })).join("")}</tr>`, bodyId)}
   </div>`;
 
 const tps = {
@@ -474,7 +486,7 @@ const tps = {
   template: () => section("TPS (Chart + Table)", panel('data-chart-selector="tpsTransaction" data-tps-filter="tps"', `
     ${titleRow(`<span>TPS (Chart + Table)</span><span id="tpsGranularityLabel" class="muted"></span><span id="seriesCountTps" class="muted"></span>${showAllBtn("showAllTpsTransactionsBtn")}`)}
     ${chartWrap("tpsChart")}
-    ${dataTable(`data-table="tpsSummary"`, tpsHead(TX_TPS_COLUMNS), "tpsBody")}
+    ${dataTable(`data-table="tpsSummary"`, tpsHead("transaction"), "tpsBody")}
   `)),
   init(ctx) {
     const { outlet } = ctx;
@@ -492,7 +504,7 @@ const tpsDetail = {
   template: () => section("TPS Detail (Chart + Table)", panel('data-chart-selector="tpsDetail" data-tps-filter="tpsDetail"', `
     ${titleRow(`<span>TPS Detail (Chart + Table)</span><span id="seriesCountTpsDetail" class="muted"></span>${showAllBtn("showAllTpsDetailBtn")}`)}
     ${chartWrap("tpsDetailChart")}
-    ${dataTable(`data-table="tpsDetail"`, tpsHead(DETAIL_TPS_COLUMNS), "tpsDetailBody")}
+    ${dataTable(`data-table="tpsDetail"`, tpsHead("detail"), "tpsDetailBody")}
   `)),
   init(ctx) {
     renderTpsPanels(ctx, [TPS_PANELS[1]], ["tpsDetailChart"]);
@@ -523,7 +535,7 @@ const rps = {
   template: () => section("RPS (Chart + Table)", panel('data-chart-selector="tpsApi" data-tps-filter="rps"', `
     ${titleRow(`<span>RPS (Chart + Table)</span><span id="seriesCountTpsApi" class="muted"></span>${showAllBtn("showAllTpsApiBtn")}`)}
     ${chartWrap("tpsApiChart")}
-    ${dataTable(`data-table="tpsSummaryApi"`, tpsHead(API_TPS_COLUMNS), "tpsApiBody")}
+    ${dataTable(`data-table="tpsSummaryApi"`, tpsHead("api"), "tpsApiBody")}
   `)),
   init(ctx) {
     renderTpsPanels(ctx, RPS_PANELS, ["tpsApiChart"]);

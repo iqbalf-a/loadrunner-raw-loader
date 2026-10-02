@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { autoGranularitySeconds } from "./src/state.js";
 
@@ -40,6 +40,22 @@ async function statFile(file) {
   }
 }
 
+// Header SQLite: string "SQLite format 3\0" sepanjang 16 byte. Dicek sebelum file disalin ke cache
+// supaya path yang diisi user tidak bisa menyalin berkas sembarang ke dalam folder cache, dan supaya
+// pesan errornya menyebut sekalian kenapa file itu ditolak.
+const SQLITE_MAGIC = "SQLite format 3\0";
+
+async function hasSqliteHeader(file) {
+  const handle = await open(file, "r");
+  try {
+    const buffer = Buffer.alloc(16);
+    const { bytesRead } = await handle.read(buffer, 0, 16, 0);
+    return bytesRead === 16 && buffer.toString("latin1") === SQLITE_MAGIC;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function findErrorDatabase(candidates) {
   for (const file of candidates) {
     const info = await statFile(file);
@@ -61,6 +77,11 @@ async function loadDatabaseSync() {
 async function openErrorDatabase(candidates) {
   const found = await findErrorDatabase(candidates);
   if (!found) return null;
+  // Header dicek sebelum apa pun menyentuh folder cache: path dari panel Errors boleh diisi bebas,
+  // dan salinannya tidak seharusnya bisa dipakai menitipkan berkas sembarang.
+  if (!await hasSqliteHeader(found.file)) {
+    throw new Error(`${found.file} bukan file SQLite, jadi tidak bisa dibaca sebagai SqliteDb.db.`);
+  }
 
   const walInfo = await statFile(`${found.file}-wal`);
   const version = [found.info.size, found.info.mtimeMs, walInfo?.size ?? "-", walInfo?.mtimeMs ?? "-"].join(":");
@@ -203,7 +224,11 @@ export async function queryErrors(session, options = {}) {
       COUNT(DISTINCT m.Vuser_ID) AS vusers, COUNT(DISTINCT m.Script_ID) AS scripts,
       MIN(${ELAPSED}) AS firstSeconds, MAX(${ELAPSED}) AS lastSeconds
     ${FROM_MAIN} ${whereSql}`, values);
-  const granularity = Math.max(1, Math.round(Number(options.granularity) || autoGranularitySeconds(totals.lastSeconds)));
+  // Tanpa result, rentang errornya sendiri yang menentukan granularity. Rentang, bukan lastSeconds:
+  // autoGranularitySeconds() mashed lewat lastSeconds akan selalu menganggap error pertama terjadi
+  // di detik 0, jadi run yang mulai lambat akan mendapat bucket terlalu rapat.
+  const errorSpan = (totals.lastSeconds ?? 0) - (totals.firstSeconds ?? 0);
+  const granularity = Math.max(1, Math.round(Number(options.granularity) || autoGranularitySeconds(errorSpan)));
 
   progress.phase("Mengelompokkan error...", 65, 85);
   const groupBy = "GROUP BY m.Script_ID, m.Error_Code, m.Message_ID";

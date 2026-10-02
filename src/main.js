@@ -4,7 +4,7 @@ import {
   autoGranularitySeconds,
   resolveGroup,
   resolveSelection,
-  buildTransactions,
+  resetChartSelections,
 } from "./state.js";
 import {
   setupChartPanelActions,
@@ -33,11 +33,17 @@ import {
   SERIES_MAX,
   updateSortIndicators,
   rtRankNames,
+  resetRtTableCache,
 } from "./pages.js";
 
 // Seri yang sudah difetch untuk tiap panel grafik. Key-nya sama dengan data-chart-selector di
-// template halaman, jadi halaman bisa dibangun ulang dari state tanpa query baru.
+// template halaman, jadi halaman bisa dibangun ulang dari state tanpa query baru. Series-nya
+// milik result yang sedang dibuka, jadi ikut dibersihkan setiap Load Result baru.
 const chartAllSeries = {};
+
+function resetChartAllSeries() {
+  for (const key of Object.keys(chartAllSeries)) delete chartAllSeries[key];
+}
 
 // Elemen shell: sidebar, toolbar, modal, loading overlay. Semuanya ada di index.html dari awal,
 // jadi aman diambil sekali waktu modul dimuat. Id lain milik halaman tertentu dan baru dicari
@@ -539,6 +545,11 @@ async function loadResult() {
     state.appliedEnd = duration;
     state.appliedTpsGranularity = autoGranularitySeconds(duration);
     els.tpsGranularity.value = String(state.appliedTpsGranularity);
+    // Semua cache di bawah menyimpan data result SEBELUMNYA: nama transaksi tidak akan sama,
+    // jadi membiarkannya akan menggambar seri run lama di atas grafik run baru.
+    resetChartAllSeries();
+    resetChartSelections();
+    resetRtTableCache();
     resetErrorFilter();
     setProgress(90, "Query dashboard...");
     await refreshDashboardData((done, total) => setProgress(90 + (10 * done) / total, `Query dashboard ${done}/${total}...`));
@@ -595,7 +606,7 @@ async function copyTableRows(table, button) {
 // dari state setiap sort.
 function getTableRows(tableKey) {
   switch (tableKey) {
-    case "tx": return buildTransactions();
+    case "tx": return state.transactions;
     case "txRps": return state.rpsTransactions;
     case "rtTable": return state.rtTableRows.responseTime;
     case "rtApiTable": return state.rtTableRows.responseTimeApi;
@@ -697,7 +708,17 @@ document.addEventListener("keydown", (event) => {
   else closeExpandedPanel();
 });
 
-window.addEventListener("resize", renderActivePage);
+// Resize membangun ulang seluruh halaman (termasuk canvas Chart.js), jadi dikemas per frame:
+// event resize datang jauh lebih cepat dari frame, dan tanpa ini drag tepi jendela pada result besar
+// akan menggambar ulang berkali-kali dalam satu frame.
+let resizeFrame = 0;
+window.addEventListener("resize", () => {
+  if (resizeFrame) return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    renderActivePage();
+  });
+});
 window.addEventListener("hashchange", navigate);
 
 // Search di toolbar panel hanya mengubah baris tabel mana yang tampil, jadi cukup render ulang

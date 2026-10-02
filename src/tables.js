@@ -1,5 +1,6 @@
 import { fmtNumber, fmtSeconds, fmtMs, escapeHtml, formatHms } from "./format.js";
 import { state, graphByType, inRange, groupLikeToRegex, sortRows, TRANSACTION_SUMMARY_LIMIT } from "./state.js";
+import { TPS_MODE_COLUMNS } from "./tps-columns.js";
 import { seriesPickCell, seriesSearchQuery } from "./charts.js";
 
 // Dipakai kartu Overview dan sheet Overview di export XLSX, supaya angkanya selalu sama.
@@ -97,26 +98,9 @@ const TPS_HEAD_CELL = (sortKey, label, align = "right") => `
   <th class="px-3.5 py-2.5 border-b border-(--line) text-${align} text-(--chart-text) text-[10.5px] tracking-[0.08em] uppercase whitespace-nowrap cursor-pointer select-none" data-sort="${sortKey}">${label} <span class="sort-indicator text-(--signal)"></span></th>
 `;
 
-const TPS_MODE_COLUMNS = {
-  transaction: [
-    ["name", "Transaction", "left"], ["groupName", "Group", "left"],
-    ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
-  ],
-  api: [
-    ["name", "API", "left"], ["groupName", "Group", "left"],
-    ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
-  ],
-  // TPS Detail: one row per BP group, so the name IS the group — no separate Group column.
-  detail: [
-    ["name", "BP Group", "left"],
-    ["minTps", "Min TPS"], ["avgTps", "Avg TPS"], ["maxTps", "Max TPS"], ["points", "Points"],
-  ],
-  // SiteScope CPU/Memory: satu baris per host, angkanya persen — bukan TPS, jadi tanpa suffix granularity.
-  sitescope: [
-    ["host", "Host", "left"],
-    ["min", "Min (%)"], ["avg", "Avg (%)"], ["max", "Max (%)"],
-  ],
-};
+// Definisi kolomnya ada di tps-columns.js supaya halaman, modal, dan sheet XLSX tidak bisa berbeda.
+// Rincian bentuk kolom (format, penanda bucket) ada di sana juga.
+const columnsFor = (mode) => TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
 
 // Which field the group-filter wildcard matches against for a given mode: for transaction/api rows
 // it's the resolved groupName column, but detail rows ARE already one-row-per-group, so the name
@@ -134,22 +118,25 @@ export function filterByGroup(rows, mode) {
   return re ? rows.filter((row) => re.test(row[field] ?? "")) : rows;
 }
 
+function granularitySuffix() {
+  return `<span class="muted normal-case">@${state.appliedTpsGranularity}s</span>`;
+}
+
 // Min/Max TPS are graph readings (lowest/highest plotted bucket), so they move with bucket width
 // — same as Min/Max in the LoadRunner Analysis graph legend. Granularity is tagged onto both
 // headers so those numbers aren't read as standalone absolutes. Avg TPS is a plain rate (total
 // transactions / elapsed window) and is intentionally NOT bucket-dependent, matching LRA's own
 // Min/Avg/Max naming — LRA never calls it "Avg graph", only Min and Max carry that framing.
-function granularitySuffix() {
-  return `<span class="muted normal-case">@${state.appliedTpsGranularity}s</span>`;
-}
-
-function tpsHeadLabel(key, label) {
-  return key === "maxTps" || key === "minTps" ? `${label} ${granularitySuffix()}` : label;
+// Penanda kolom mana yang bergrained datang dari tps-columns.js, jadi tidak bisa lagi menyimpang
+// dari definisi kolomnya.
+function tpsHeadLabel(column) {
+  return column.grained ? `${column.label} ${granularitySuffix()}` : column.label;
 }
 
 export function renderTpsSummaryHead(target, mode) {
-  const columns = TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
-  target.innerHTML = columns.map(([key, label, align]) => TPS_HEAD_CELL(key, tpsHeadLabel(key, label), align)).join("");
+  target.innerHTML = columnsFor(mode)
+    .map((column) => TPS_HEAD_CELL(column.key, tpsHeadLabel(column), column.align))
+    .join("");
 }
 
 // Header tabel TPS di panel utama ditulis statis di index.html, jadi suffix granularity-nya
@@ -178,11 +165,11 @@ const TPS_CELL_RENDERERS = {
 };
 
 export function renderTpsSummaryRows(rows, mode = "transaction", tbody = null) {
-  const columns = TPS_MODE_COLUMNS[mode] ?? TPS_MODE_COLUMNS.transaction;
+  const columns = columnsFor(mode);
   return rows.map((tx) => `
     <tr class="hover:bg-(--surface)">
       ${tbody ? seriesPickCell(tbody, tx.name) : ""}
-      ${columns.map(([key]) => TPS_CELL_RENDERERS[key](tx)).join("")}
+      ${columns.map((column) => TPS_CELL_RENDERERS[column.key](tx)).join("")}
     </tr>
   `).join("");
 }

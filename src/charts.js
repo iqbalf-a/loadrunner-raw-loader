@@ -1,4 +1,4 @@
-import { formatHms, currentCssVar } from "./format.js";
+import { formatHms, currentCssVar, escapeHtml } from "./format.js";
 import { state, graphByType, resolveSelection, rowsByMeasurement } from "./state.js";
 import { composeChartImage } from "./chart-snapshot.js";
 
@@ -7,10 +7,9 @@ export const chartSelectors = new Map();
 const searchQueries = new Map();
 const seriesSearch = new Map();
 const searchListeners = new Set();
-const SEARCH_RESULTS_LIMIT = 150;
 // Batas baris tabel ketika kotak search panel response time diisi: statistik per nama diambil dari
 // server, jadi jangan sampai satu ketikan memunculkan ratusan baris sekaligus.
-export const SEARCH_ROWS_LIMIT = 100;
+const SEARCH_RESULTS_LIMIT = 150;
 
 // Isian kotak search di toolbar tabel. Chart-nya sendiri tidak berubah karena search ini; yang
 // berubah cuma baris mana yang tampil di tabel, jadi renderer tabel yang membaca nilainya.
@@ -135,10 +134,6 @@ function renderChartSelector(panel) {
   }
   selector.querySelector(".chart-series-search").value = searchQueries.get(key) ?? "";
   renderSelectorList(panel);
-}
-
-function escapeHtml(value) {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 // Ikon inline (bukan icon font/CDN) supaya dashboard tetap jalan tanpa internet.
@@ -581,58 +576,6 @@ function createGradient(canvas, color) {
   return gradient;
 }
 
-export function drawBarChart(canvas, labels, values, color) {
-  destroyChart(canvas);
-  const chart = new Chart(canvas, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: "Value",
-        data: values,
-        backgroundColor: createGradient(canvas, color),
-        borderColor: color,
-        borderWidth: 1.5,
-        borderRadius: 5,
-        maxBarThickness: 42,
-      }],
-    },
-    options: {
-      ...baseChartOptions(),
-      plugins: {
-        ...baseChartOptions().plugins,
-        legend: { display: false },
-        tooltip: {
-          ...baseChartOptions().plugins.tooltip,
-          callbacks: {
-            title(items) {
-              return String(items[0]?.label ?? "");
-            },
-            label(item) {
-              return `Value: ${Number(item.parsed.y ?? 0).toFixed(3)}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          type: "category",
-          grid: { display: false },
-          border: { display: false },
-          ticks: {
-            color: currentCssVar("--chart-text") || "#65708f",
-            font: { family: "JetBrains Mono, Consolas, SFMono-Regular, monospace", size: 10 },
-            maxRotation: 35,
-            minRotation: 0,
-          },
-        },
-        y: baseChartOptions().scales.y,
-      },
-    },
-  });
-  chartInstances.set(canvas, chart);
-}
-
 export function drawMultiLineChart(canvas, seriesList, xMinOverride = null, xMaxOverride = null) {
   destroyChart(canvas);
   const allPoints = seriesList
@@ -670,26 +613,4 @@ export function transactionSeries(graphType, start, end, mapper) {
     color: colors[index % colors.length],
     points: mapper([...rows].sort((a, b) => a.elapsedSeconds - b.elapsedSeconds)),
   }));
-}
-
-export function tpsPoints(rows, start, end, granularitySeconds) {
-  const buckets = new Map();
-
-  for (const row of rows) {
-    const bucketIndex = Math.floor((row.elapsedSeconds - start) / granularitySeconds);
-    const bucketStart = start + bucketIndex * granularitySeconds;
-    const current = buckets.get(bucketStart) ?? 0;
-    buckets.set(bucketStart, current + row.value);
-  }
-
-  return [...buckets.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([bucketStart, total]) => {
-      const bucketEnd = Math.min(bucketStart + granularitySeconds, end);
-      const bucketDuration = Math.max(1, bucketEnd - bucketStart);
-      return {
-        x: bucketStart + bucketDuration / 2,
-        y: total / bucketDuration,
-      };
-    });
 }

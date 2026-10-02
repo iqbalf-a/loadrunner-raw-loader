@@ -140,6 +140,13 @@ export function groupLikeToRegex(pattern) {
   return new RegExp("^" + escaped.replace(/%/g, ".*") + "$", "i");
 }
 
+// Kembalikan pilihan seri ke keadaan awal (semua null = default seri teratas yang berlaku).
+// Wajib dipanggil saat result lain dimuat: nama transaksi dari result sebelumnya tidak akan
+// cocok dengan apa pun di result baru, dan resolveSelection() tidak pernah membersihkannya sendiri.
+export function resetChartSelections() {
+  for (const key of Object.keys(state.chartSelections)) state.chartSelections[key] = null;
+}
+
 // Seri yang sedang digambar sebuah panel. Default-nya `limit` seri teratas, tapi hanya selama user
 // belum pernah memilih sendiri: null = belum ada pilihan, [] = "Deselect All" yang disengaja.
 // Tanpa pembedaan itu, grafik akan memaksa 10 seri teratas lagi begitu semua centang dilepas.
@@ -180,8 +187,4 @@ export function rowsByMeasurement(graph, start, end) {
     grouped.set(name, current);
   }
   return grouped;
-}
-
-export function buildTransactions() {
-  return state.transactions;
 }

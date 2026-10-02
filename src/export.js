@@ -1,6 +1,7 @@
 import { formatHms, formatClockAt } from "./format.js";
 import { state, sortRows } from "./state.js";
 import { filterByGroup, overviewMetrics } from "./tables.js";
+import { TPS_MODE_COLUMNS, overallColumns, xlsxColumns } from "./tps-columns.js";
 import { buildXlsx } from "./xlsx.js";
 
 // Satu sheet per panel tabel, nama sheet = judul panel tanpa akhiran "(Table)"/"(Chart + Table)"
@@ -20,31 +21,13 @@ const TX_COLUMNS = [
   col("Success", "success", "int"), col("Fail", "fail", "int"), col("Total", "samples", "int"),
 ];
 
-// Kolom tabel RPS Overall: angkanya dari rumus yang sama dengan TPS Overall, hanya labelnya RPS.
-function rpsOverallColumns() {
-  return [
-    col(`Min RPS ${granularityTag()}`, "minTps", "dec3"),
-    col("Avg RPS", "avgTps", "dec3"),
-    col(`Max RPS ${granularityTag()}`, "maxTps", "dec3"),
-    col("Points", "points", "int"),
-  ];
-}
+// Kolom tabel TPS/RPS/SiteScope ikut definisi tunggal di tps-columns.js, jadi header di Excel
+// selalu sama dengan yang tampil di dashboard -- termasuk tag @Ns di Min/Max.
+const tpsColumns = (mode) => xlsxColumns(TPS_MODE_COLUMNS[mode], granularityTag());
 
-function tpsColumns(nameHeader, withGroup) {
-  return [
-    col(nameHeader, "name"),
-    ...(withGroup ? [col("Group", (tx) => tx.groupName ?? "-")] : []),
-    col(`Min TPS ${granularityTag()}`, "minTps", "dec3"),
-    col("Avg TPS", "avgTps", "dec3"),
-    col(`Max TPS ${granularityTag()}`, "maxTps", "dec3"),
-    col("Points", "points", "int"),
-  ];
-}
+const SITESCOPE_COLUMNS = tpsColumns("sitescope");
 
-const SITESCOPE_COLUMNS = [
-  col("Host", "host"), col("Min (%)", "min", "dec3"), col("Avg (%)", "avg", "dec3"), col("Max (%)", "max", "dec3"),
-];
-
+// Tabel per metrik LG (halaman CPU/Memory/Disk) cuma punya Avg dan Max metrik itu.
 const LG_COLUMNS = [
   col("Load Generator", "host"), col("Status", "status"),
   col("CPU Avg (%)", "cpuAvg", "dec2"), col("CPU Max (%)", "cpuMax", "dec2"),
@@ -52,7 +35,6 @@ const LG_COLUMNS = [
   col("Disk Avg (%)", "diskAvg", "dec2"), col("Disk Max (%)", "diskMax", "dec2"),
 ];
 
-// Tabel per metrik LG (halaman CPU/Memory/Disk) cuma punya Avg dan Max metrik itu.
 const LG_METRIC_COLUMNS = (metric) => [
   col("Load Generator", "host"), col(`${metric} Avg (%)`, "avg", "dec2"), col(`${metric} Max (%)`, "max", "dec2"),
 ];
@@ -152,11 +134,11 @@ export function collectTableSheets() {
       overviewSheet(),
       tableSheet("Transactions Summary (BP)", TX_COLUMNS, state.transactions, "tx", "transaction"),
       tableSheet("Transactions Summary (RPS_)", TX_COLUMNS, state.rpsTransactions, "txRps", "transaction"),
-      tableSheet("TPS", tpsColumns("Transaction", true), state.tpsSummary, "tpsSummary", "transaction"),
-      tableSheet("RPS", tpsColumns("API", true), state.tpsSummaryApi, "tpsSummaryApi", "api"),
-      tableSheet("TPS Detail", tpsColumns("BP Group", false), state.tpsDetail, "tpsDetail", "detail"),
-      sheet("TPS Overall", tpsColumns("", false).slice(1), [state.tpsOverall]),
-      sheet("RPS Overall", rpsOverallColumns(), [state.rpsOverall]),
+      tableSheet("TPS", tpsColumns("transaction"), state.tpsSummary, "tpsSummary", "transaction"),
+      tableSheet("RPS", tpsColumns("api"), state.tpsSummaryApi, "tpsSummaryApi", "api"),
+      tableSheet("TPS Detail", tpsColumns("detail"), state.tpsDetail, "tpsDetail", "detail"),
+      sheet("TPS Overall", xlsxColumns(overallColumns("TPS"), granularityTag()), [state.tpsOverall]),
+      sheet("RPS Overall", xlsxColumns(overallColumns("RPS"), granularityTag()), [state.rpsOverall]),
       tableSheet("SiteScope CPU Overall", SITESCOPE_COLUMNS, state.siteScopeCpuRows, "siteScopeCpu", "sitescope"),
       tableSheet("SiteScope Memory Overall", SITESCOPE_COLUMNS, state.siteScopeMemoryRows, "siteScopeMemory", "sitescope"),
       sheet("Load Generator Summary", LG_COLUMNS, sortRows(state.lgHealthRows ?? [], state.sort.lgHealth)),
@@ -177,11 +159,11 @@ export function collectTableSheets() {
 const CHART_TABLES = {
   responseTime: () => ({ columns: TX_COLUMNS, rows: state.rtTableRows.responseTime, nameKey: "name", sortKey: "rtTable" }),
   responseTimeApi: () => ({ columns: TX_COLUMNS, rows: state.rtTableRows.responseTimeApi, nameKey: "name", sortKey: "rtApiTable" }),
-  tpsTransaction: () => ({ columns: tpsColumns("Transaction", true), rows: state.tpsSummary, nameKey: "name", sortKey: "tpsSummary" }),
-  tpsApi: () => ({ columns: tpsColumns("API", true), rows: state.tpsSummaryApi, nameKey: "name", sortKey: "tpsSummaryApi" }),
-  tpsDetail: () => ({ columns: tpsColumns("BP Group", false), rows: state.tpsDetail, nameKey: "name", sortKey: "tpsDetail" }),
-  tpsOverall: () => ({ columns: tpsColumns("", false).slice(1), rows: [state.tpsOverall] }),
-  rpsOverall: () => ({ columns: rpsOverallColumns(), rows: [state.rpsOverall] }),
+  tpsTransaction: () => ({ columns: tpsColumns("transaction"), rows: state.tpsSummary, nameKey: "name", sortKey: "tpsSummary" }),
+  tpsApi: () => ({ columns: tpsColumns("api"), rows: state.tpsSummaryApi, nameKey: "name", sortKey: "tpsSummaryApi" }),
+  tpsDetail: () => ({ columns: tpsColumns("detail"), rows: state.tpsDetail, nameKey: "name", sortKey: "tpsDetail" }),
+  tpsOverall: () => ({ columns: xlsxColumns(overallColumns("TPS"), granularityTag()), rows: [state.tpsOverall] }),
+  rpsOverall: () => ({ columns: xlsxColumns(overallColumns("RPS"), granularityTag()), rows: [state.rpsOverall] }),
   siteScopeCpu: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeCpuRows, nameKey: "host", sortKey: "siteScopeCpu" }),
   siteScopeMemory: () => ({ columns: SITESCOPE_COLUMNS, rows: state.siteScopeMemoryRows, nameKey: "host", sortKey: "siteScopeMemory" }),
   lgCpu: () => ({ columns: LG_METRIC_COLUMNS("CPU"), rows: state.lgMetricRows?.cpu, nameKey: "host", sortKey: "lgCpu" }),
